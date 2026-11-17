@@ -60,12 +60,12 @@ public class MiscUtils {
     public static IHeatReceiver getHeatReceiverNeighbor(World world, int x, int y, int z) {
         Integer[] sides = new Integer[] { 0, 1, 2, 3, 4, 5 };
         shuffleArray(sides);
-        Integer[] arr$ = sides;
-        int len$ = sides.length;
 
-        for (int i$ = 0; i$ < len$; i$++) {
-            int i = arr$[i$];
-            ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[sides[i]];
+        // One index, not two. The old form - for (int i : sides) { VALID_DIRECTIONS[sides[i]] } - composed the
+        // shuffled array with itself, which is still a permutation, so it visited every side exactly once and no
+        // behaviour changed (CODE_REVIEW 5.4 retraction). This is readability, not a fix.
+        for (int side : sides) {
+            ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[side];
             TileEntity te = world.getTileEntity(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ);
             if (te instanceof TileEntityFurnace) {
                 return new TileFurnaceWrapper((TileEntityFurnace) te);
@@ -82,12 +82,9 @@ public class MiscUtils {
     public static int provideEnergyToNeighbors(int amount, World world, int x, int y, int z) {
         Integer[] sides = new Integer[] { 0, 1, 2, 3, 4, 5 };
         shuffleArray(sides);
-        Integer[] arr$ = sides;
-        int len$ = sides.length;
 
-        for (int i$ = 0; i$ < len$; i$++) {
-            int i = arr$[i$];
-            ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[sides[i]];
+        for (int side : sides) {
+            ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[side];
             TileEntity te = world.getTileEntity(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ);
             if (te instanceof IEnergyReceiver) {
                 IEnergyReceiver rec = (IEnergyReceiver) te;
@@ -117,12 +114,23 @@ public class MiscUtils {
                 if (teClass.isInstance(te)) {
                     adjoined.add((T) te);
 
+                    // Expand from the tile we just popped, not from the origin (CODE_REVIEW 5.5).
+                    // Using x/y/z here meant the walk was one block deep: every neighbour of the origin was already
+                    // in done, so the frontier never grew past the first ring.
+                    final int cx = te.xCoord;
+                    final int cy = te.yCoord;
+                    final int cz = te.zCoord;
                     for (int i = 0; i < 6; i++) {
                         ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[i];
-                        if (world.blockExists(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ)) {
-                            te = world.getTileEntity(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ);
-                            if (te != null && !done.contains(new BlockCoord(te.xCoord, te.yCoord, te.zCoord))) {
-                                teList.add(te);
+                        int nx = cx + dir.offsetX;
+                        int ny = cy + dir.offsetY;
+                        int nz = cz + dir.offsetZ;
+                        if (world.blockExists(nx, ny, nz)) {
+                            TileEntity neighbour = world.getTileEntity(nx, ny, nz);
+                            if (neighbour != null
+                                && !done.contains(new BlockCoord(neighbour.xCoord, neighbour.yCoord, neighbour.zCoord))
+                                && !teList.contains(neighbour)) {
+                                teList.add(neighbour);
                             }
                         }
                     }

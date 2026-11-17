@@ -17,7 +17,7 @@
 | 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **now** |
 | 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | **P0** |
 | 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | **P1** |
-| 4 | `MiscUtils` neighbour helpers double-index the side array (`sides[sides[i]]`), so 4 of 6 sides are usually skipped. Energy distribution and furnace heating are lossy | bug | **P1** |
+| 4 | ~~`MiscUtils` neighbour helpers double-index the side array~~ - **retracted**: the double index is a permutation either way, so nothing was ever skipped (§5.4). Cleaned up for readability only | not a defect | ~~P1~~ |
 | 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | **P1** |
 | 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | **P1** |
 | 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | **P1** |
@@ -278,7 +278,7 @@ plus a `try`/`catch` that logs at error and leaves the field null instead of dyi
 succeeded) instead of the config flag alone. The game test adds ids 70/71/72, "each enchantment occupies its own
 `enchantmentsList` slot" and "no two share an id". FuzziTweaks' side is branch `refactor/drop-artifice-mixin`.
 
-### 5.4 `MiscUtils` neighbour helpers visit a permuted subset of the six sides — **P1**
+### 5.4 `MiscUtils` neighbour helpers index the side array twice — **retracted, not a defect**
 
 `util/MiscUtils.java:63-76` and `:85-98`.
 
@@ -291,24 +291,23 @@ for (int i$ = 0; i$ < len$; i$++) {
     ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[sides[i]];   // sides[sides[i$]] !
 ```
 
-This is a decompiler artefact of `for (int i : sides)`: the index is applied twice. The loop still runs six times,
-but it visits a permutation of a permutation — some sides twice, some never. Consequences:
+This is a decompiler artefact of `for (int i : sides)` - the index is applied twice - but **the original analysis
+was wrong**: it claimed the loop visits "a permutation of a permutation, some sides twice, some never". It does not.
+`sides` is a bijection of `0..5`, so `{sides[sides[j]] : j}` is the image of a bijection over the complete set, which
+is the complete set. Every side is visited exactly once; only the *order* differs, and the order was randomised on
+purpose. There is no energy loss and no unreachable furnace.
 
-* `TileEntityHeatingCoil` and `TileEntityNuclearBattery` push energy into a random, incomplete subset of
-  neighbours (energy is silently lost when a receiver is never visited).
-* `MiscUtils.getHeatReceiverNeighbor` can fail to find an adjacent furnace at all, so the heating coil sometimes
-  does nothing.
+Verified rather than argued: on the pre-fix code, both new tests below still pass (a `provideEnergyToNeighbors`
+sweep over six receivers gets six distinct sides, and a lone furnace above a coil still gets heat on 200 consecutive
+draws), and the in-game "coil heats the furnace in each direction" check passes on all six sides. A defect that no
+test can distinguish from correct behaviour is not a defect.
 
-Fix:
+Kept anyway, as readability: the `arr$`/`len$` decompiler scaffolding is gone and both helpers are a plain
+`for (int side : sides)`, which removes the thing that made this look wrong in the first place.
 
-```java
-for (int i : sides) {
-    ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[i];
-    ...
-}
-```
-
-Acceptance test: the game-test "every furnace around a coil burns" assertion, currently a `knownBug` probe.
+Tests added while checking it, worth keeping as properties even though they do not pin a bug:
+`MiscUtilsTest.provideEnergyToNeighborsVisitsEverySideExactlyOnce`, `.getHeatReceiverNeighborFindsAReceiverOnAnySide`,
+and the in-game per-direction furnace check in `checkHeatingCoil`.
 
 ### 5.5 `MiscUtils.getAdjoinedTileEntities` flood fill is depth 1 — **P1**
 
@@ -1051,7 +1050,7 @@ approximation. Re-run it before any release that touches names.
 | §E.4 Chisel table | `chisel-2.18.1-GTNH.jar!team/chisel/compat/Compatibility.class` (`init`, `addSupport(String,String,String,int,int)`); API: `com/cricketcraft/chisel/api/carving/Carving.addVariation` |
 | §E.5 Angelica default | `angelica-2.2.46.jar!com/gtnewhorizons/angelica/config/AngelicaConfig.class`; live value at `config/angelica-modules.cfg:51` |
 | §E.7 config keys | `config/ProjectE/custom_emc.cfg:22`, `config/RTG/rtg.cfg:435,443`, `config/mystcraft/symbols.cfg:242`, `config/AppliedEnergistics2/recipes/items.csv`, `config/UniDict.cfg.BACKUP:169` |
-| §5.4 neighbour double index | `util/MiscUtils.java:69, 91` |
+| §5.4 neighbour double index (retracted) | `util/MiscUtils.java:69, 91` |
 | §5.5 flood fill | `util/MiscUtils.java:103-134` |
 | §5.6 generator leak | `event/ArtificeTickHandler.java:44-70`; `WorldGen{Cave,Cluster,Desert,Sulfur}.java` `getChunksToGen` |
 | §5.7 scaffold | `block/frame/BlockFrameScaffold.java:127-145, 175-225` |

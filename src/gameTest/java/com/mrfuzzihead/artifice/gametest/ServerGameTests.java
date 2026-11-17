@@ -683,7 +683,41 @@ public final class ServerGameTests {
             check("coil heat reached at least one furnace", burnTime > 0);
             check("coil drains RF while heating", coil.getEnergyStored(ForgeDirection.UP) < 1600);
 
-            knownBug("MiscUtils neighbour broadcasts only visit a permuted subset of the six sides", true);
+            // CODE_REVIEW 5.4: the neighbour helpers indexed the side array twice, so a random subset of the six
+            // sides was visited - some twice, some never. One furnace at a time on each side is the deterministic
+            // form of that check: with the double index, the sides the permutation never reaches stay cold.
+            for (ForgeDirection dir : ForgeDirection.VALID_DIRECTIONS) {
+                for (ForgeDirection other : ForgeDirection.VALID_DIRECTIONS) {
+                    site.setBlock(
+                        site.x + other.offsetX,
+                        site.y + other.offsetY,
+                        site.z + other.offsetZ,
+                        Blocks.air,
+                        0);
+                }
+
+                int fx = site.x + dir.offsetX;
+                int fy = site.y + dir.offsetY;
+                int fz = site.z + dir.offsetZ;
+                site.setBlock(fx, fy, fz, Blocks.furnace, 0);
+                TileEntity furnaceTile = world.getTileEntity(fx, fy, fz);
+                check("furnace placed " + dir, furnaceTile instanceof TileEntityFurnace);
+                if (!(furnaceTile instanceof TileEntityFurnace)) {
+                    continue;
+                }
+                // TileFurnaceWrapper only accepts heat when the furnace has something it can smelt.
+                ((TileEntityFurnace) furnaceTile)
+                    .setInventorySlotContents(0, new ItemStack(Item.getItemFromBlock(Blocks.iron_ore)));
+
+                // Refill and let the coil pick a heat receiver; a single adjacent furnace has to be the one found.
+                coil.receiveEnergy(ForgeDirection.UP, 1600, false);
+                for (int i = 0; i < 8; i++) {
+                    coil.updateEntity();
+                }
+
+                int heat = ((TileEntityFurnace) furnaceTile).furnaceBurnTime;
+                check("coil heats the furnace " + dir + " (burn time " + heat + ")", heat > 0);
+            }
         } finally {
             site.clear();
         }
