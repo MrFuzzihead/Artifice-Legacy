@@ -1,0 +1,127 @@
+name: In-game tests
+
+# The reusable GTNH build-and-test workflow runs `./gradlew build`, which now includes the JUnit suite and the
+# coverage floor via `check`. This workflow adds the part `check` cannot do: boot a real dedicated server and run
+# the assertions in src/gameTest/java, which are what catch registration, tile-entity and world-interaction bugs.
+#
+# `./gradlew gameTestServer` runs the assertions in src/gameTest/java and exits with their result.
+# `./gradlew runServer -PsmokeTest` only boots the game and exits 0, which catches a load-time crash on its own.
+
+on:
+  pull_request:
+    branches: [ master, main ]
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  server-smoke:
+    name: Dedicated server boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle itself needs 17+, but `runServer` runs the game on the Java 8 toolchain that the mod ships for.
+      # Install both: setting up 8 first leaves JAVA_HOME on 25 while JDK 8 stays available for Gradle to find.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Gradle does not scan the hostedtoolcache for toolchains; point it at JDK 8 explicitly.
+      - name: Make JDK 8 visible to Gradle toolchains
+        run: |
+          mkdir -p "$HOME/.gradle"
+          echo "org.gradle.java.installations.paths=$JAVA_HOME_8_X64" >> "$HOME/.gradle/gradle.properties"
+
+      - name: Accept the Minecraft EULA
+        run: mkdir -p run/server && echo "eula=true" > run/server/eula.txt
+
+      - name: Make gradlew executable
+        # The wrapper is committed from Windows; the exec bit is not guaranteed on checkout.
+        run: chmod +x gradlew
+
+      - name: Boot the server
+        run: ./gradlew runServer -PsmokeTest --stacktrace
+
+      - name: Check the marker
+        # Grep every log: FML also writes fml-junk-earlystartup.log, which sorts before latest.log.
+        run: |
+          ls -l run/server/logs/ || true
+          test -n "$(ls run/server/logs/*.log 2>/dev/null)" || { echo "no server log was written"; exit 1; }
+          grep -h "ARTIFICE_SMOKE_TEST_OK" run/server/logs/*.log
+          grep -hq "ARTIFICE_SMOKE_TEST_OK" run/server/logs/*.log
+
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-smoke-log
+          path: run/server/logs/
+          if-no-files-found: warn
+
+  game-test:
+    name: In-game assertions
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle itself needs 17+, but `runServer` runs the game on the Java 8 toolchain that the mod ships for.
+      # Install both: setting up 8 first leaves JAVA_HOME on 25 while JDK 8 stays available for Gradle to find.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Gradle does not scan the hostedtoolcache for toolchains; point it at JDK 8 explicitly.
+      - name: Make JDK 8 visible to Gradle toolchains
+        run: |
+          mkdir -p "$HOME/.gradle"
+          echo "org.gradle.java.installations.paths=$JAVA_HOME_8_X64" >> "$HOME/.gradle/gradle.properties"
+
+      - name: Accept the Minecraft EULA
+        run: mkdir -p run/server && echo "eula=true" > run/server/eula.txt
+
+      - name: Make gradlew executable
+        # The wrapper is committed from Windows; the exec bit is not guaranteed on checkout.
+        run: chmod +x gradlew
+
+      - name: Run the game tests
+        run: ./gradlew gameTestServer --stacktrace
+
+      - name: Check the marker
+        # ARTIFICE_GAMETEST_OK is only printed after every assertion has passed; a crash mid-run therefore fails
+        # here instead of silently passing.
+        run: |
+          ls -l run/server/logs/ || true
+          test -n "$(ls run/server/logs/*.log 2>/dev/null)" || { echo "no server log was written"; exit 1; }
+          grep -hE "ARTIFICE-GAMETEST\] [0-9]+/[0-9]+ checks passed" run/server/logs/*.log || true
+          grep -hq "ARTIFICE_GAMETEST_OK" run/server/logs/*.log
+          ! grep -hq "ARTIFICE_GAMETEST_FAILED" run/server/logs/*.log
+
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-test-log
+          path: run/server/logs/
+          if-no-files-found: warn
