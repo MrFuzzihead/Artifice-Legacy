@@ -36,4 +36,14 @@
 dependencies {
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.9.9-GTNH:dev")
     devOnlyNonPublishable("curse.maven:cofh-core-69162:2388751")
+
+    // Unit tests (src/test/java). The JaCoCo, coverage and in-game game-test wiring lives in addon.gradle.kts.
+    //
+    // JUnit 4.13.2 is the newest 4.x release. The suite is launched on a Java 8 toolchain (see addon.gradle.kts)
+    // because that is the JVM generation the mod actually ships for, and Mockito 4.11.0 is the newest Mockito line
+    // that still runs there - Mockito 5 requires Java 11. mockito-inline provides the inline mock maker, which is
+    // what allows the tests to mock final Minecraft classes such as ItemStack and Block.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:4.11.0")
+    testImplementation("org.mockito:mockito-inline:4.11.0")
 }
