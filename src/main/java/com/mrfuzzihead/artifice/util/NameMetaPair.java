@@ -74,9 +74,15 @@ public class NameMetaPair {
         return this.getItem() != null && this.meta >= 0 && this.meta < 65536;
     }
 
+    /**
+     * {@code equals} treats metadata {@code -1} as "any metadata", so metadata must not take part in the hash: a
+     * wildcard pair has to land in the same bucket as every concrete pair it matches, or a {@code HashSet} /
+     * {@code HashMap} lookup with the wildcard form silently misses. The previous {@code name.hashCode() | meta}
+     * set every bit for {@code meta == -1}, which is exactly the case that mattered.
+     */
     @Override
     public int hashCode() {
-        return this.name.hashCode() | this.meta;
+        return this.name.hashCode();
     }
 
     @Override
