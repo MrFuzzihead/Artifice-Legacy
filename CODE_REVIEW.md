@@ -15,27 +15,25 @@
 | # | Item | Kind | Priority |
 |---|---|---|---|
 | 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **now** |
-| 2 | `ArtificeCore.missingMappings` uses `event.get()`; after the mod-id change it must use `event.getAll()` or legacy worlds silently lose every block | bug (blocker for §4) | **P0** |
-| 3 | Registry names are `Artifice:tile.artifice.basalt` / `Artifice:item.artifice.box`. Normalise them while the mod-id is being changed, not later | migration | **P0** |
-| 4 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | **P0** |
-| 5 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | **P1** |
-| 6 | `MiscUtils` neighbour helpers double-index the side array (`sides[sides[i]]`), so 4 of 6 sides are usually skipped. Energy distribution and furnace heating are lossy | bug | **P1** |
-| 7 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | **P1** |
-| 8 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | **P1** |
-| 9 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | **P1** |
-| 10 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
-| 11 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
-| 12 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
-| 13 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
-| 14 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
-| 15 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
-| 16 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
-| 17 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
-| 18 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
-| 19 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
-| 20 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
-| 21 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
-| 22 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
+| 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | **P0** |
+| 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | **P1** |
+| 4 | `MiscUtils` neighbour helpers double-index the side array (`sides[sides[i]]`), so 4 of 6 sides are usually skipped. Energy distribution and furnace heating are lossy | bug | **P1** |
+| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | **P1** |
+| 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | **P1** |
+| 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | **P1** |
+| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
+| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
+| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
+| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
+| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
+| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
+| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
+| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
+| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
+| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
+| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
+| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
+| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -49,7 +47,7 @@ are not codebase defects, but they decide whether the migration boots at all.
 | P1 | **FuzziTweaks 1.2.0 hard-links `shukaro.artifice` from a Mixin.** Its `ArtificeEnchantsMixin` targets `shukaro.artifice.ArtificeEnchants` and reads `ArtificeConfig` / `ArtificeCore` fields. The target is gated on the *mod id* `Artifice`, which the rename does not change, so the mixin is still queued and then fails → **startup crash**. Must be dropped in the same release (§3.2, Appendix E.3) | pack | **P0** |
 | P2 | Port FuzziTweaks' enchant-id allocation in-tree **first**, preserving ids 70/71/72, or dropping the mixin silently re-collapses the three enchantments onto one id (§5.3) | code | **P0** |
 | P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
-| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (§4.2.1) | pack / upstream | P3 |
+| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
 
 ---
 
@@ -141,299 +139,32 @@ that matters: no world migration is needed for (a).
    author in different packages and are irrelevant.
 4. **Do not rename the CoFH worldgen feature names.** They are hashed into every chunk (`WorldHandler.genHash`)
    to drive retrogen. Measured on the real save: 11 distinct `Artifice:<registryName> <feature>` strings, 3.36M
-   occurrences across 414 region files (E.5). The hash contains the **mod id, the registry name and the feature
-   name**, so §4's registry rename is not merely cosmetic — see §4.2.1.
+   occurrences across 414 region files (E.8). The hash contains the **mod id, the registry name and the feature
+   name**, which is the main reason the rename is off the table (§4).
 
 ---
 
-## 4. Migration (b): mod id `Artifice` → `artifice`
+## 4. Migration (b): mod id `Artifice` → `artifice` — **rejected**
 
-This is the risky one, because the mod id is stamped into **every block and item registry name** in the world.
+The mod id and the registry names stay as they are. Recorded here so it does not get re-proposed.
 
-### 4.1 What FML actually keys on the mod id
+The case against was measured on the real pack (Appendix E):
 
-From the 1.7.10 FML sources (`GameData.addPrefix`, `Loader.fireMissingMappingEvent`,
-`FMLPreInitializationEvent`), a mod id is used for:
+* **CoFH retrogen hashes.** Every chunk stores `Artifice:<registryName> <featureName>` for each feature CoFH ran —
+  3,358,850 occurrences in 11 distinct forms in one test world (E.8). Changing the mod id or a registry name makes
+  CoFH treat that feature as new for every chunk and re-run it over existing terrain: duplicate ore clusters and
+  lakes in already-generated worlds.
+* **Configs key on `modid:name`.** AE2 (facade list + `Facades.cfg`), ProjectE, RTG, Mystcraft and UniDict all name
+  Artifice stacks that way (E.7). Each would need re-keying, or a legacy alias layer, or both.
+* **Nothing needs it.** No jar in the pack depends on the mod id — no `required-after:Artifice`, no IMC address, no
+  network channel, no mod-container lookup (E.2). The only two consumers are Chisel, whose table is already broken
+  (E.4), and FuzziTweaks, which is ours and is being fixed anyway (E.3).
+* **The upside was cosmetic** — `artifice:basalt` instead of `artifice:tile.artifice.basalt` — against a release
+  that would have to carry `missingMappings` remaps for every block and item, a config migration, and a worldgen
+  retrogen story.
 
-| Mechanism | Code | Persisted? | Affected by the rename? |
-|---|---|---|---|
-| Block/item registry domain | `GameData.addPrefix()` → `modId + ":" + name` | **yes** — chunk NBT + every `ItemStack` NBT | **yes** — every block, every item |
-| Config file name | `new File(configDir, activeContainer.getModId() + ".cfg")` | yes (on disk) | **yes** — `config/Artifice.cfg` is orphaned |
-| `@Instance` injection | `@Mod.Instance("Artifice")` | no | must match the new id or injection fails |
-| `Loader.isModLoaded` / `required-after:` | exact string match | in other mods' jars | **yes** — other mods' dependency strings break |
-| IMC address | `FMLInterModComms.sendMessage("Artifice", …)` | no | **yes** — silently dropped |
-| `getModContainer("Artifice")` | exact string match | no | yes, if anyone calls it |
-| Network channel | `NetworkRegistry.newChannel("Artifice", …)` | no | **no** — the channel name is arbitrary. Keep or change freely, but change both sides together |
-| Creative tab label | `new ArtificeCreativeTab("Artifice")` | no | no |
-| Enchantment names | `setName("artifice.invisible")` | no (ids are persisted) | no |
-| Tile-entity ids | `"tileArtificeAttuned"` | yes | **no** — not namespaced |
-| Ore dictionary / fluids | `"oreMarble"`, `"oil"` | yes | no |
-| CoFH worldgen feature names | `"Artifice: … Cycles"` | hash in chunk NBT | no (and do not change them) |
-
-### 4.2 The registry-name problem, in full
-
-Because every block/item is registered **from its own constructor** with `this.getUnlocalizedName()` as the
-name, the current registry names carry the `tile.`/`item.` prefix *and* the `artifice.` prefix:
-
-```
-Block: Artifice:tile.artifice.basalt
-Item:  Artifice:item.artifice.sledge.wood
-Slab:  Artifice:tile.artifice.basalt.slab
-Ore:   Artifice:tile.artifice.orecoal
-Fluid: Artifice:tile.artifice.fluid.oil
-Bucket:Artifice:item.bucket
-```
-
-A raw `Artifice` → `artifice` swap therefore produces `artifice:tile.artifice.basalt`. That is *correct* but
-ugly, and it means you would have to do a second, equally risky rename later. **Do both in one release.**
-
-Recommended target names:
-
-```
-artifice:basalt            artifice:basalt.slab        artifice:basalt.stairs.cobblestone
-artifice:marble            artifice:ore_coal           artifice:sledge.wood
-artifice:frame             artifice:lamp.white         artifice:glasswall
-```
-
-Appendix A has the full current-name → proposed-name table, derived from the source.
-
-Two hard constraints when you do this:
-
-1. **Blocks and their `ItemBlock`s must keep the same name.** `GameData.verifyItemBlockName` throws
-   `IllegalStateException` if `iBlockRegistry.getNameForObject(block)` and `iItemRegistry.getNameForObject(itemBlock)`
-   differ. `registerBlock(block, itemclass, name)` registers both under `name`, so passing one normalised name is
-   enough — do not normalise the block and item names separately.
-2. **Do not pass a name that already has a prefix.** `GameData.registerBlock` logs
-   `bigWarning("Illegal extra prefix …")` when the name already contains `:` (and then keeps the old prefix).
-   Keep passing bare names; `addPrefix` adds the domain.
-
-### 4.2.1 What these names cost in a real pack
-
-Two measured effects, both from `FuzzCraft-Legacy` (Appendix E).
-
-**(a) Third-party tables hard-code the ugly form — and some are already broken.** Chisel's compat table
-(`team/chisel/compat/Compatibility.java`) does:
-
-```java
-addSupport("Artifice", "artifice.marble",      "marble",      0, 99);
-addSupport("Artifice", "artifice.marble.slab", "marble_slab", 0, 99);
-for (String color : ROCK_COLORS)
-    addSupport("Artifice", "artifice.limestone." + color, "limestone", 0, 99);
-```
-
-`addSupport(modid, registryName, group, meta, order)` resolves through `GameRegistry.findBlock(modid, registryName)`,
-which is an exact `modId + ":" + name` lookup. Artifice registers `Artifice:tile.artifice.marble`, so
-`findBlock("Artifice", "artifice.marble")` returns null and every one of those calls returns early. The
-integration has therefore **never worked** — confirmed against the AE2-generated `items.csv`, which contains 383
-`Artifice:` entries and not one plain `Artifice:marble`. Normalising the registry names in §4 will not fix this
-(the lookup still misses); see E.4 for the three-line repair.
-
-The lesson for the rename: `tile.`-prefixed registry names are unusual, third-party tables that were written
-against them get them wrong, and nobody notices because failure is silent. Normalising is a **compat improvement**,
-not just tidying.
-
-**(b) The names are hashed into every chunk.** CoFHCore's retrogen stores a per-chunk hash list in the save as
-`Artifice:<registryName> <featureName>`, e.g. `Artifice: tile.artifice.marble@0 Clusters`. The mod id, the
-registry name **and** the feature name are all in the string, so renaming any of the three makes CoFH treat the
-feature as new for every existing chunk and re-run it — duplicate ore clusters and lakes in already-generated
-terrain. Renaming the package does not touch it; renaming the registry names does. Measured on the real save:
-11 distinct strings, 3,358,850 occurrences over 414 region files (E.5).
-
-### 4.3 The migration mechanism (this is the part that must be right)
-
-`FMLMissingMappingsEvent` is the only supported hook, and there are three traps:
-
-**(a) `event.get()` will return an empty list after the rename.**
-
-`Loader.fireMissingMappingEvent` builds the event as
-`missingMappings.put(m.name.substring(0, m.name.indexOf(':')), m)` — the key is the **domain from the saved
-name** — and `FMLMissingMappingsEvent.get()` returns `missing.get(activeContainer.getModId())`. After the rename,
-the container id is `artifice` while the saved names say `Artifice:`, so `get()` returns nothing. Only
-`getAll()` sees them. The current handler (`ArtificeCore.java:138`) uses `get()`.
-
-**(b) Each mapping must be remapped to the *same kind* of object**, and the target must already be registered:
-
-```java
-// sketch - ArtificeCore#missingMappings, after the rename
-private static final String LEGACY_DOMAIN = "Artifice:";
-private static final String DOMAIN = modID + ":";   // "artifice:"
-
-@EventHandler
-public void missingMappings(FMLMissingMappingsEvent event) {
-    for (MissingMapping m : event.getAll()) {      // getAll(), not get()
-        try {
-            if (m.type == Type.BLOCK) {
-                Block target = (Block) Block.blockRegistry.getObject(remapName(m.name));
-                if (target != null) m.remap(target); else m.warn();
-            } else {
-                Item target = (Item) Item.itemRegistry.getObject(remapName(m.name));
-                if (target != null) m.remap(target); else m.warn();
-            }
-        } catch (RuntimeException e) {
-            m.warn();   // remap() throws if the target is unregistered or the type is wrong
-        }
-    }
-}
-
-/** Maps a legacy name to the new one: both the domain swap and the path normalisation. */
-private static String remapName(String legacyName) {
-    if (!legacyName.startsWith(LEGACY_DOMAIN)) {
-        return legacyName.replace("dobule", "double");   // keep the existing typo fix working for legacy blocks too
-    }
-    String path = legacyName.substring(LEGACY_DOMAIN.length());
-    if (path.startsWith("tile.artifice.")) path = path.substring("tile.artifice.".length());
-    else if (path.startsWith("item.artifice.")) path = path.substring("item.artifice.".length());
-    else if (path.startsWith("item.")) path = path.substring("item.".length());
-    return DOMAIN + path;
-}
-```
-
-Notes:
-
-* `remap()` registers an *alias* in `GameData.iBlockRegistry` / `iItemRegistry`
-  (`Registry.addAlias(oldName, newName)`), so `ItemStack.loadItemStackFromNBT` resolves old names for the rest of
-  that session. When a chunk or an inventory is written again it writes the new name, so the alias load
-  disappears naturally.
-* `MissingMapping.remap(Block)` throws `IllegalArgumentException` for an `ITEM` mapping and for an unregistered
-  target, and `NullPointerException` for a null target. Hence the try/catch. Mapping an ItemBlock via
-  `Item.getItemFromBlock(target)` is not needed if you look the item up in `Item.itemRegistry` by the same name.
-* The current `dobule` → `double` fix must be folded into the same `remapName` so that a legacy world with both
-  problems gets both fixed in one pass.
-* `event.getAll()` also hands you *other mods'* missing mappings. Filter on `startsWith(LEGACY_DOMAIN)` (or handle
-  `m.name` defensively) so you never touch another mod's data.
-
-**(c) The ID has to move with the name.** `processIdRematches` re-registers the target at `remap.id` and throws
-`IllegalStateException` if the new id differs. That is automatic with `remap()`; do not try to fix names by
-editing registries yourself.
-
-### 4.4 Config migration
-
-`config/Artifice.cfg` becomes `config/artifice.cfg` and every setting silently reverts to default. Two of those
-settings are **not cosmetic**:
-
-* `Enchantments/Starting ID for EID range` (default 70). If the file regenerates and the id moves, every existing
-  enchanted item keeps a numeric id that may now point at a different enchantment or at none.
-* `Compatibility/Marble List` and `Basalt List` drive `ArtificeRegistry` chains, which affect **recipes**.
-
-Add a one-time rename at the start of `preInit`, before any `Configuration` is constructed:
-
-```java
-File legacy = new File(evt.getModConfigurationDirectory(), "Artifice.cfg");
-File current = evt.getSuggestedConfigurationFile();
-if (legacy.isFile() && !current.isFile()) {
-    //noinspection ResultOfMethodCallIgnored
-    legacy.renameTo(current);     // fall back to copy+delete if renameTo fails across filesystems
-}
-```
-
-(Use `evt.getModConfigurationDirectory()` — `suggestedConfigurationFile` points at the *new* name.)
-
-### 4.5 Enchantment ids
-
-Ids are persisted as NBT shorts on items, and default to the 70..255 range from `enchantmentStartID`. Nothing
-about the rename changes them, but the *config regeneration* in 4.4 would. Keep 4.4, and consider documenting the
-recommended range in the config comment.
-
-The ids are **observable in the pack**, and they are not a free knob. `config/fuzziids/enchantments.csv` (a dump by
-FuzziIDs, not a pin file — see E.6) records this pack's actual allocation:
-
-```
-70,enchantment.artifice.invisible,Artifice,shukaro.artifice.enchant.EnchantmentInvisible
-71,enchantment.artifice.soulstealing,Artifice,shukaro.artifice.enchant.EnchantmentSoulstealing
-72,enchantment.artifice.resistance,Artifice,shukaro.artifice.enchant.EnchantmentResistance
-```
-
-Those are the ids already on every enchanted item in existing worlds. Changing the registration *order*, the
-*start* id or the collision strategy remaps them — a `Resistance` book becomes an `Invisible` book with no
-warning, because 1.7.10 stores the number, not the name. The risk is not theoretical here: it is exactly what
-FuzziTweaks currently patches (`@Overwrite initEnchants()`), so the in-tree fix in §5.3 has to reproduce 70/71/72
-before that mixin can be deleted.
-
-Also note §5.3: if the range is exhausted the enchantments stay `null` and the mod NPEs. A large pack is exactly
-where both problems meet.
-
-### 4.6 Network channel
-
-`CommonProxy` creates `NetworkRegistry.newChannel("Artifice", …)`. The name is arbitrary and is not persisted,
-so the rename does not require touching it. If you do rename it, old and new clients cannot talk — which matters
-only for a mixed-version server, and FML's `required-after` handshake normally prevents that. Recommendation:
-change it to `artifice` for tidiness, in the same release, and note it in the changelog.
-
-### 4.7 IMC and `Loader.isModLoaded`
-
-`FMLInterModComms` delivery is keyed by mod id. A mod that sends `sendMessage("Artifice", "register-marble", …)`
-will be told "Mod Artifice not found" and the message is dropped. Two options:
-
-* **Option A (recommended, simplest):** accept the break, and document it. The IMC API is small and the
-  pack-facing entry point that matters (`ArtificeRegistry` via reflection) is rarer than `sendMessage`.
-* **Option B (compatibility shim):** ship a second, tiny `@Mod(modid = "Artifice", name = "Artifice (legacy id)")`
-  container in the same jar for one release. FML allows multiple `@Mod` classes per jar. It gets an empty
-  `preInit` and its own `processIMCRequests` that forwards `event.getMessages()` into `IMC.processIMC`.
-  `Loader.isModLoaded("Artifice")` and `required-after:Artifice` then keep working. Cost: a second mod-list entry,
-  a second `mcmod.info`-equivalent entry, and a deprecation window you have to remember to close.
-
-`Loader.isModLoaded` / `required-after` breakage is the one you cannot fix from inside a single container, so if
-your pack (or a popular addon) depends on it, Option B is the only way to ship the rename without a hard break.
-
-### 4.8 Feature names, fluids and other "looks like a mod id but isn't"
-
-* **CoFH `WorldHandler` feature names** (`getFeatureName()` in all nine `WorldGen*` classes) are hashed into a
-  per-chunk `genHash`. They are display strings prefixed `"Artifice: "`. Do **not** rename them as part of a
-  cosmetic cleanup; a rename is a worldgen event.
-* **`BlockFluid*`** pass `"Artifice".toLowerCase()` to CoFH's `BlockFluidCoFHBase`, which builds the *block name*
-  `artifice.fluid.oil`. Lower-cased already → the registry name stays `Artifice:tile.artifice.fluid.oil` today and
-  becomes `artifice:artifice.fluid.oil` unless normalised. Include the fluid blocks in the normalisation.
-* **`TextureHandler`** hardcodes `"Artifice".toLowerCase() + ":"` for the resource domain. The resource domain is
-  *not* the mod id and does not need to match it — leave it pointing at `assets/artifice`, or switch it to
-  `ArtificeCore.modID.toLowerCase()` for clarity. Do not change the asset folder as part of the rename; that would
-  break resource packs.
-
-### 4.9 Step-by-step release plan
-
-**Release N (current mod id, no functional change beyond the harness):**
-
-1. Merge PR #2. Tag a release so you have a "last known good `Artifice` id" build.
-2. Add the `getAll()`-based `missingMappings` handler *now*, while the id is still `Artifice`. It is a no-op for
-   same-id worlds (nothing missing) but it makes the next step a pure config change, and you can test the legacy
-   mapping path by hand-editing a chunk name.
-3. Add the config-file rename *now*, keyed on the same constant. Also a no-op today.
-
-**Release N+1 (the rename):**
-
-4. `modId = artifice`, `modGroup` unchanged, `@Mod(modid = "artifice")`, `@Instance("artifice")`,
-   `ArtificeCore.modID = "artifice"`.
-5. Register every block/item with a bare, normalised name (`"basalt"`, not `"tile.artifice.basalt"`). This is a
-   mechanical change in ~30 constructors; the `getUnlocalizedName()` calls in `ArtificeBlocks` for the slabs must
-   be replaced with explicit names at the same time.
-6. Verify:
-   * `./gradlew gameTestServer` — it asserts `name.startsWith(ArtificeCore.modID + ":")` and uniqueness for every
-     block and item, so a missed registration or a collision fails the suite.
-   * Load a pre-rename world and confirm: no "missing block" prompt, inventories intact, tile entities intact,
-     `fml-server-latest.log` shows the remaps (`FMLLog.fine("The Block %s is being remapped to %s.")`), and a
-     re-save round-trips without warnings.
-   * Check `config/artifice.cfg` contains the *old values* (i.e. 4.4 worked) — especially the enchantment start id.
-7. Optional: the legacy `Artifice` shim container (Option B) for one release, if the pack scan finds
-   `required-after:Artifice` or `Loader.isModLoaded("Artifice")`.
-
-**Release N+2:** drop the shim, drop the alias path only when you are comfortable that no world in the pack still
-holds `Artifice:` names (alias removal is safe once every chunk and every `ItemStack` has been re-saved at least
-once — practically: after one full play cycle, not one login).
-
-### 4.10 What the existing test suite already covers
-
-* `RegistrationInvariantsTest.modAnnotationAndConstantsAgree` fails if `@Mod(modid)`, `ArtificeCore.modID` and
-  `@Instance` drift apart — so step 4 cannot half-happen.
-* `ServerGameTests.checkRegistries` asserts every block and item name starts with `ArtificeCore.modID + ":"`, is
-  unique, and that every block has an `ItemBlock`. It follows the rename automatically and will catch a missed
-  registration or a `verifyItemBlockName` mismatch on the next run.
-* There is intentionally **no** test asserting the literal `"Artifice"`, so the rename does not require touching
-  the suite.
-* Missing from the harness (add when step 5 lands): a test that takes a fabricated `Artifice:tile.artifice.basalt`
-  NBT name and asserts the alias resolves to `artifice:basalt`. `FMLMissingMappingsEvent` is not constructible
-  without FML internals, so this is best done as a game-test assertion that calls the same `remapName` helper the
-  handler uses — extract it to a package-visible static method for that.
-
----
+Accepted consequence: Chisel's marble/limestone carving stays inert until its table is fixed or we register the
+carving groups ourselves (E.4, option 1). Appendix A is now a record of what is emitted, not a rename proposal.
 
 ## 5. Defect catalogue
 
@@ -529,7 +260,7 @@ private static int findFreeEnchantID(int start, boolean[] used) {
 
 `used.length` rather than a literal 256, because EndlessIDs grows the array. Keep the order invisible ->
 soulstealing -> resistance and the start id, and this reproduces ids 70/71/72 exactly — which is what this pack's
-worlds already contain (§4.5). **Acceptance test:** the game-test mod asserts the three ids are 70/71/72 under the
+worlds already contain (E.6). **Acceptance test:** the game-test mod asserts the three ids are 70/71/72 under the
 stock config, so a reorder fails CI instead of a save.
 
 This exact logic currently ships as a third-party Mixin (`FuzziTweaks`,
@@ -872,7 +603,7 @@ capacity default and the recipe cost should be revisited; if not, drop the NBT f
 
 Also, `getHalfSlab`/`getDoubleSlab` (`:26-88`) resolve the slab by substring-matching the unlocalised name
 (`contains("gray")` after `contains("lightgray")`, …). It works today but breaks the moment a name changes, and it
-is the kind of code a registry-name normalisation (§4.2) will silently break. Replace with a static map from
+is the kind of code a registry-name change would silently break. Replace with a static map from
 half-slab → double-slab built in `ArtificeBlocks`.
 
 ### 5.30 `FrameRenderer.getRenderId()` returns 0 — **P3**
@@ -902,7 +633,7 @@ limestone variant from the biome. `IFeatureGenerator`s are shared across chunk-g
 (CoFH's `WorldHandler.generateWorld` may be called from the chunk populator), so two chunks generating
 concurrently can swap each other's stone type mid-blob. Use a local variable and pass it to `ClusterGen`.
 
-### 5.34 `ArtificeBlocks` registers slabs with `getUnlocalizedName()` — **P3, but see §4**
+### 5.34 `ArtificeBlocks` registers slabs with `getUnlocalizedName()` — **P3**
 
 `ArtificeBlocks.java:194, 210`: `blockBasalt.getUnlocalizedName() + ".slab"` embeds `tile.` twice in the registry
 name (`Artifice:tile.artifice.basalt.slab`). It also couples the registry name to the *localisation* key. Give
@@ -1012,14 +743,14 @@ Bonus: this becomes a pure, unit-testable function — exactly the kind of thing
 
 Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
 Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
-`setBlockName`/`registerBlock` pair. This is the prerequisite for §4.2 and makes `GameRegistry.findBlock` usable
+`setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
 for the first time.
 
 ### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method
 
 Split into `initRocks`, `initOres`, `initFrames`, `initDecorative`, `initFluids`, `initFunctional`, each with a
 static field group. The current method constructs ~120 blocks and registers ~40 of them in one go, which makes the
-registration order (and therefore the §4.3 block/item name coupling) very hard to reason about.
+registration order (and therefore the block/item name coupling) very hard to reason about.
 
 ### 7.5 The tooltip registry is 226 registration calls
 
@@ -1112,7 +843,8 @@ the generation state is arbitrary. Cosmetic.
 
 `ItemBox` NBT uses `id` = `Item.getIdFromItem(item)` and `meta`. Numeric ids are **not stable across mod changes**
 in 1.7.10 (they depend on registration order), so a box in a chest can silently turn into a different item after a
-pack update. Storing the registry *name* (`"artifice:sledge.wood"`) is the robust fix, and it dovetails with §4.2.
+pack update. Storing the registry *name* is the robust fix, and it is the only form that survives a future
+rename.
 The same applies to `DispenserBehaviorBox` and `RecipeBox`.
 
 ### 9.7 Fluids
@@ -1138,12 +870,12 @@ fluids Artifice did not create.
 
 `tile.`-prefixed registry names are unusual, and third-party tables written against them get them wrong. Chisel's
 carving table is the worked example: it asks for `Artifice:artifice.marble`, which has never existed, so its
-marble/limestone integration has silently done nothing in every pack that has both mods (§4.2.1(a), E.4). Nobody
+marble/limestone integration has silently done nothing in every pack that has both mods (E.4). Nobody
 reported it because the failure is a null `findBlock` and an early return.
 
 Two takeaways:
 
-* Normalising the names in §4 is a **compat improvement**, not cosmetics.
+* If the names are ever normalised, do it as a compat change with a release of its own, not as drive-by tidying.
 * If Chisel support is wanted before then, it is cheaper to register the carving groups from our side, where the
   real names are known, than to wait for another repo. Sketched in E.4.
 
@@ -1177,71 +909,69 @@ The remaining 95% is dominated by classes that cannot be instantiated without a 
 | Client/render | ~3,300 | client run only |
 
 Realistic headless ceiling with the current structure: **~12–15%**. Extracting the frequency helper (§7.2), the
-slab `getHalfSlab` map (§5.29) and the `remapName` helper (§4.3) would each add pure testable surface.
+slab `getHalfSlab` map (§5.29) would each add pure testable surface.
 
 ### 10.3 Next tests to add (in priority order)
 
-1. `remapName` (both the domain swap and the `tile.`/`item.` normalisation) — pure, and it is the thing that
-   protects worlds during §4.
-2. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
-3. The §7.2 frequency helper, once extracted.
-4. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
+1. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
+2. The §7.2 frequency helper, once extracted.
+3. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
    way).
-5. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
+4. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
 6. A game-test assertion that breaking an `oreIron` block yields an iron-ore item and drops XP (§5.9).
 
 ---
 
 ## Appendix A — Registry names currently emitted
 
-Derived from each class's `setBlockName`/`setUnlocalizedName` plus FML's `modId + ":"` prefixing. `Artifice:` is
-the domain today; the proposed column applies §4.2.
+Derived from each class's `setBlockName`/`setUnlocalizedName` plus FML's `modId + ":"` prefixing. These are the
+names the mod emits today, and the names §4 keeps.
 
-| Kind | Current registry name | Proposed |
-|---|---|---|
-| Rock | `Artifice:tile.artifice.basalt` | `artifice:basalt` |
-| Rock (limestone) | `Artifice:tile.artifice.limestone.gray` | `artifice:limestone.gray` |
-| Slab | `Artifice:tile.artifice.basalt.slab` | `artifice:basalt.slab` |
-| Double slab | `Artifice:tile.artifice.basalt.doubleslab` | `artifice:basalt.doubleslab` |
-| Stairs | `Artifice:tile.artifice.basalt.stairs.cobblestone` | `artifice:basalt.stairs.cobblestone` |
-| Frame | `Artifice:tile.artifice.frame` | `artifice:frame` |
-| Detector | `Artifice:tile.artifice.detector` | `artifice:detector` |
-| Blast wall | `Artifice:tile.artifice.reinforced` | `artifice:reinforced` |
-| Glass wall | `Artifice:tile.artifice.glasswall` / `…glasswalldark` | `artifice:glasswall` / `…glasswalldark` |
-| Scaffold | `Artifice:tile.artifice.scaffold` | `artifice:scaffold` |
-| Steel block | `Artifice:tile.artifice.steel` | `artifice:steel_block` |
-| Lamp | `Artifice:tile.artifice.lamp.white` … (16 + 16 inverted) | `artifice:lamp.white` … |
-| Coloured torch | `Artifice:tile.artifice.coloredtorch0` … `15` | `artifice:torch.colored0` … |
-| Flora | `Artifice:tile.artifice.flora` | `artifice:flora` |
-| Lotus | `Artifice:tile.artifice.flora.lily` | `artifice:lotus` |
-| Ore | `Artifice:tile.artifice.orecoal` … (15, plus `.glowing` for redstone/ender) | `artifice:ore.coal` … |
-| Sulfur | `Artifice:tile.artifice.sulfur` | `artifice:sulfur` |
-| Niter | `Artifice:tile.artifice.niter` | `artifice:niter` |
-| Ender ore | `Artifice:tile.artifice.enderore` (+ `.glowing`) | `artifice:enderore` |
-| Uranium | `Artifice:tile.artifice.uranium` | `artifice:uranium` |
-| Glow sand | `Artifice:tile.artifice.glowsand` | `artifice:glowsand` |
-| Charred log | `Artifice:tile.artifice.charredlog` | `artifice:charredlog` |
-| Tephra | `Artifice:tile.artifice.tephra` | `artifice:tephra` |
-| Attuned | `Artifice:tile.artifice.attunedredstone.transmitter` / `.receiver` | `artifice:attuned.transmitter` / `.receiver` |
-| Logic | `Artifice:tile.artifice.logicredstone` | `artifice:logicredstone` |
-| Nuclear battery | `Artifice:tile.artifice.nuclearbattery` | `artifice:nuclearbattery` |
-| Heating coil | `Artifice:tile.artifice.heatingcoil` | `artifice:heatingcoil` |
-| Fluid block | `Artifice:tile.artifice.fluid.oil` / `fuel` / `bitumen` / `creosote` | `artifice:fluid.oil` … |
-| Sledge | `Artifice:item.artifice.sledge.wood` … | `artifice:sledge.wood` … |
-| Sickle | `Artifice:item.artifice.sickle.wood` … | `artifice:sickle.wood` … |
-| Steel item | `Artifice:item.artifice.steel` | `artifice:steel` |
-| Resource | `Artifice:item.artifice.resource` | `artifice:resource` |
-| Nugget / coin / dye / upgrade | `Artifice:item.artifice.{nugget,coin,dye,upgrade}` | `artifice:{nugget,coin,dye,upgrade}` |
-| Box | `Artifice:item.artifice.box` | `artifice:box` |
-| Craft kit | `Artifice:item.artifice.craftkit` | `artifice:craftkit` |
-| Bucket | `Artifice:item.bucket` | `artifice:bucket` |
+| Kind | Registry name |
+|---|---|
+| Rock | `Artifice:tile.artifice.basalt` |
+| Rock (limestone) | `Artifice:tile.artifice.limestone.gray` |
+| Slab | `Artifice:tile.artifice.basalt.slab` |
+| Double slab | `Artifice:tile.artifice.basalt.doubleslab` |
+| Stairs | `Artifice:tile.artifice.basalt.stairs.cobblestone` |
+| Frame | `Artifice:tile.artifice.frame` |
+| Detector | `Artifice:tile.artifice.detector` |
+| Blast wall | `Artifice:tile.artifice.reinforced` |
+| Glass wall | `Artifice:tile.artifice.glasswall` / `…glasswalldark` |
+| Scaffold | `Artifice:tile.artifice.scaffold` |
+| Steel block | `Artifice:tile.artifice.steel` |
+| Lamp | `Artifice:tile.artifice.lamp.white` … (16 + 16 inverted) |
+| Coloured torch | `Artifice:tile.artifice.coloredtorch0` … `15` |
+| Flora | `Artifice:tile.artifice.flora` |
+| Lotus | `Artifice:tile.artifice.flora.lily` |
+| Ore | `Artifice:tile.artifice.orecoal` … (15, plus `.glowing` for redstone/ender) |
+| Sulfur | `Artifice:tile.artifice.sulfur` |
+| Niter | `Artifice:tile.artifice.niter` |
+| Ender ore | `Artifice:tile.artifice.enderore` (+ `.glowing`) |
+| Uranium | `Artifice:tile.artifice.uranium` |
+| Glow sand | `Artifice:tile.artifice.glowsand` |
+| Charred log | `Artifice:tile.artifice.charredlog` |
+| Tephra | `Artifice:tile.artifice.tephra` |
+| Attuned | `Artifice:tile.artifice.attunedredstone.transmitter` / `.receiver` |
+| Logic | `Artifice:tile.artifice.logicredstone` |
+| Nuclear battery | `Artifice:tile.artifice.nuclearbattery` |
+| Heating coil | `Artifice:tile.artifice.heatingcoil` |
+| Fluid block | `Artifice:tile.artifice.fluid.oil` / `fuel` / `bitumen` / `creosote` |
+| Sledge | `Artifice:item.artifice.sledge.wood` … |
+| Sickle | `Artifice:item.artifice.sickle.wood` … |
+| Steel item | `Artifice:item.artifice.steel` |
+| Resource | `Artifice:item.artifice.resource` |
+| Nugget / coin / dye / upgrade | `Artifice:item.artifice.{nugget,coin,dye,upgrade}` |
+| Box | `Artifice:item.artifice.box` |
+| Craft kit | `Artifice:item.artifice.craftkit` |
+| Bucket | `Artifice:item.bucket` |
 
 Pair-count sanity check: the game test asserts uniqueness across **both** registries and that every block has an
 `ItemBlock` under the same name.
 
 ## Appendix B — Config surface
 
-File: `config/Artifice.cfg` (becomes `config/artifice.cfg`; see §4.4).
+File: `config/Artifice.cfg`.
 
 | Category | Keys (count) | Notes |
 |---|---|---|
@@ -1289,24 +1019,19 @@ done
 
 Interpretation:
 
-* **No hits** → both renames are safe from a pack standpoint; ship §4 with only the world-migration code.
+* **No hits** → the package rename is safe from a pack standpoint.
 * **Hits only for `shukaro`** → §3 needs the compatibility subclass (or a note in the changelog).
-* **Hits for `Artifice` as a dependency/IMC address** → use Option B in §4.7 (the shim container), or accept the
-  break and coordinate the dependent mod's update in the same pack revision.
+* **Hits for `Artifice` as a dependency/IMC address** → the mod id is load-bearing for someone; do not rename it.
 
 **This scan has been run** against `FuzzCraft-Legacy` (233 jars, 574 MB) and the results are in Appendix E. The
-shell snippets above are the quick version; `tools/scan_legacy_refs.py` and `tools/scan_registry_refs.py` in this
-repo are the version that was actually used (they walk the constant pool of every class, skip binary assets,
-recurse into embedded jars, and separate *type* references from *string* references). Re-run them before any
-release that touches names.
+version actually used walked the constant pool of every class in every jar, skipped binary assets, recursed
+into embedded jars, and separated *type* references from *string* references; the snippets above are the quick
+approximation. Re-run it before any release that touches names.
 
 ## Appendix D — File reference index
 
 | Finding | File:line |
 |---|---|
-| §4.3 legacy mapping hook | `ArtificeCore.java:136-149` |
-| §4.1 mod id constants | `ArtificeCore.java:44-64` |
-| §4.2 registry-name source | every `registerBlock(..., this.getUnlocalizedName())`; slabs at `ArtificeBlocks.java:194-214` |
 | §5.1 hash/equals | `util/NameMetaPair.java:78, 105` |
 | §5.2 sledge dispenser | `item/DispenserBehaviorSledge.java:25-29` |
 | §5.3 enchant nulls | `ArtificeEnchants.java:15-55`; `event/ArtificeEventHandler.java:24, 46`; `gui/ArtificeCreativeTab.java:39+` |
@@ -1367,13 +1092,14 @@ the package rename is **not** a no-op for this pack.
 | `config/**`, `scripts/*.zs` | 9 script files, ~1,400 config files | 10 config files reference Artifice; 0 scripts |
 | `saves/Test World` | 414 region files | 0 `shukaro` strings; 3.36M CoFH hash strings |
 
-Two passes, both scripts are in `tools/`:
+Two passes, both raw byte scans over every jar entry (constant pool included, so string literals and Mixin
+targets are caught), skipping binary assets and recursing into embedded jars:
 
-1. **`scan_legacy_refs.py`** — raw byte scan of every non-binary entry for `shukaro`. Matches are classified:
+1. **Legacy-reference pass** — raw byte scan of every non-binary entry for `shukaro`. Matches are classified:
    `Lshukaro/artifice/...` / `shukaro/artifice/...` in a class file is a **type reference** in the constant pool —
    a hard link that fails at load. Everything else is a **string** — soft, and only as good as the code that
    consumes it (reflection, a config key, a class-name list).
-2. **`scan_registry_refs.py`** — every `artifice:`-shaped token and every `Artifice` word, classified as
+2. **Registry-reference pass** — every `artifice:`-shaped token and every `Artifice` word, classified as
    *registry name*, *Forge dependency string*, or *prose*.
 
 Both skip image/audio assets and recurse into embedded jars. The limitation to keep in mind: a byte scan cannot see
@@ -1426,7 +1152,7 @@ against the renamed build and then:
 
 There is no bridge-class escape: the overwrite touches statics on two other renamed classes, so a deprecated
 `shukaro.artifice.ArtificeEnchants` subclass would not be enough. The mixin must be deleted, which means the
-allocation logic has to exist in-tree first (§5.3) and keep ids 70/71/72 (§4.5).
+allocation logic has to exist in-tree first (§5.3) and keep ids 70/71/72 (E.6).
 
 Change list (FuzziTweaks repo):
 
@@ -1512,7 +1238,7 @@ lists both class names.
 | `Thaumcraft`, `salisarcana`, `tc4tweak` | Thaumcraft's own research category `ARTIFICE`, nothing to do with us. |
 | `buildcraft-7.2.1` | a changelog line. |
 | `coretweaks/cache/jarDiscoverer.cache` | a cached jar listing, regenerated. |
-| `config/fuzziids/*.csv` | **output**, not configuration. FuzziIDs only writes these (`IdDumpManager` → `CsvWriter`; there is no reader class), so the `shukaro.artifice.enchant.*` strings in `enchantments.csv` are a report and are regenerated. It is still the best record of the pack's live enchantment ids (70/71/72, §4.5). |
+| `config/fuzziids/*.csv` | **output**, not configuration. FuzziIDs only writes these (`IdDumpManager` → `CsvWriter`; there is no reader class), so the `shukaro.artifice.enchant.*` strings in `enchantments.csv` are a report and are regenerated. It is still the best record of the pack's live enchantment ids (70/71/72, E.6). |
 
 ### E.7 Config surface: what each rename actually breaks
 
@@ -1529,7 +1255,7 @@ lists both class names.
 
 All of these are `modid:registryName` or `modid:unlocalisedName`, and both components survive the package rename —
 the mod id is unchanged and every block/item is still registered from `getUnlocalizedName()`. They are, however,
-exactly the surface that makes §4's registry rename expensive: each one has to be edited or re-keyed, on top of
+exactly the surface that would make a registry rename expensive: each one has to be edited or re-keyed, on top of
 the CoFH hash problem below.
 
 ### E.8 World data: what a save actually contains
@@ -1561,7 +1287,7 @@ Artifice: tile.blockOil Lakes                         (11,370)   <- stale, from 
 Eleven distinct strings, with the **mod id, the registry name and the feature name all inside them**. CoFH treats a
 changed hash as "this feature is new for this chunk", so renaming any of the three re-runs that feature over
 already-generated terrain — duplicate ore clusters, duplicate lakes. This is the concrete form of the "don't rename
-the worldgen hash" warning in §3.3 and §4.2.1(b).
+the worldgen hash" warning in §3.3 and E.8.
 
 Tile entities are the good news: `ArtificeTiles` registers plain ids (`tileArtificeAttuned`,
 `tileArtificeLogic`, `tileArtificeRadioBattery`, `tileArtificeHeatingCoil`), and 1.7.10 stores the registered id,
@@ -1573,7 +1299,7 @@ least be recoverable by registering both ids.
 | Migration | Safe in this pack? |
 |---|---|
 | **Package** `shukaro.artifice` → `com.mrfuzzihead.artifice` | **Yes, after two edits** — FuzziTweaks must lose its mixin (§5.3 first) and one Angelica config line changes. Worlds, configs and every other mod are unaffected. |
-| **Registry names / mod id** (§4) | **No, not in one step** — the CoFH hash strings and the config surface in E.7 both say so. That is why §4 already proposes a release of its own, with `missingMappings` and a legacy-name layer. |
+| **Registry names / mod id** | **Rejected (§4)** — the CoFH hash strings (E.8) and the config surface (E.7) both say no. The names stay `Artifice:tile.artifice.*`. |
 | **Enchantment ids** | Unchanged by either rename, but *only* if the in-tree fix reproduces 70/71/72. |
 
 Order of work, which is what `refactor/1.1.6` exists for:
@@ -1582,5 +1308,3 @@ Order of work, which is what `refactor/1.1.6` exists for:
 2. FuzziTweaks: drop the mixin, require the new Artifice.
 3. `config/angelica-modules.cfg:51`, and optionally an Angelica PR listing both class names.
 4. Optional: `ChiselCompat` (§E.4, option 1).
-5. §4 (mod id + registry names) only as a separate release with the `missingMappings` machinery — not as part of
-   the package cleanup.
