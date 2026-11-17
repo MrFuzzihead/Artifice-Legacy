@@ -1,10 +1,12 @@
-package shukaro.artifice.world;
+package com.mrfuzzihead.artifice.world;
 
 import java.util.Set;
-import shukaro.artifice.util.ChunkCoord;
+
+import com.mrfuzzihead.artifice.util.ChunkCoord;
 
 public interface ISuspendableGen {
-   Set<ChunkCoord> getChunksToGen();
 
-   boolean doGeneration(int var1, int var2);
+    Set<ChunkCoord> getChunksToGen();
+
+    boolean doGeneration(int var1, int var2);
 }

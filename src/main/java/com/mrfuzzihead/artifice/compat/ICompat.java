@@ -1,7 +1,8 @@
-package shukaro.artifice.compat;
+package com.mrfuzzihead.artifice.compat;
 
 public interface ICompat {
-   String getModID();
 
-   void load();
+    String getModID();
+
+    void load();
 }

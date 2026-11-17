@@ -1,9 +1,10 @@
-package shukaro.artifice.world;
+package com.mrfuzzihead.artifice.world;
 
-import shukaro.artifice.util.ChunkCoord;
+import com.mrfuzzihead.artifice.util.ChunkCoord;
 
 public interface IDelayedGen {
-   ChunkCoord getChunk();
 
-   boolean doGeneration();
+    ChunkCoord getChunk();
+
+    boolean doGeneration();
 }

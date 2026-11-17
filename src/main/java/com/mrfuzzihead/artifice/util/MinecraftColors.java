@@ -1,64 +1,68 @@
-package shukaro.artifice.util;
+package com.mrfuzzihead.artifice.util;
 
 public enum MinecraftColors {
-   White("DDDDDD"),
-   Orange("DB7D3E"),
-   Magenta("B350BC"),
-   LightBlue("6B8AC9"),
-   Yellow("B1A627"),
-   Lime("41AE38"),
-   Pink("D08499"),
-   Gray("404040"),
-   LightGray("9AA1A1"),
-   Cyan("2E6E89"),
-   Purple("7E3DB5"),
-   Blue("2E388D"),
-   Brown("4F321F"),
-   Green("35461B"),
-   Red("963430"),
-   Black("191616");
 
-   public String hex;
+    White("DDDDDD"),
+    Orange("DB7D3E"),
+    Magenta("B350BC"),
+    LightBlue("6B8AC9"),
+    Yellow("B1A627"),
+    Lime("41AE38"),
+    Pink("D08499"),
+    Gray("404040"),
+    LightGray("9AA1A1"),
+    Cyan("2E6E89"),
+    Purple("7E3DB5"),
+    Blue("2E388D"),
+    Brown("4F321F"),
+    Green("35461B"),
+    Red("963430"),
+    Black("191616");
 
-   private MinecraftColors(String hex) {
-      this.hex = hex;
-   }
+    public String hex;
 
-   public int toNormal() {
-      return Integer.parseInt(this.hex, 16);
-   }
+    private MinecraftColors(String hex) {
+        this.hex = hex;
+    }
 
-   public int toAdjusted(int amount) {
-      int r = Integer.parseInt(this.hex.substring(0, 2), 16) + 2 * amount;
-      if (r > 255) {
-         r = 255;
-      }
+    public int toNormal() {
+        return Integer.parseInt(this.hex, 16);
+    }
 
-      if (r < 0) {
-         r = 0;
-      }
+    public int toAdjusted(int amount) {
+        int r = Integer.parseInt(this.hex.substring(0, 2), 16) + 2 * amount;
+        if (r > 255) {
+            r = 255;
+        }
 
-      int g = Integer.parseInt(this.hex.substring(2, 4), 16) + 2 * amount;
-      if (g > 255) {
-         g = 255;
-      }
+        if (r < 0) {
+            r = 0;
+        }
 
-      if (g < 0) {
-         g = 0;
-      }
+        int g = Integer.parseInt(this.hex.substring(2, 4), 16) + 2 * amount;
+        if (g > 255) {
+            g = 255;
+        }
 
-      int b = Integer.parseInt(this.hex.substring(4, 6), 16) + 2 * amount;
-      if (b > 255) {
-         b = 255;
-      }
+        if (g < 0) {
+            g = 0;
+        }
 
-      if (b < 0) {
-         b = 0;
-      }
+        int b = Integer.parseInt(this.hex.substring(4, 6), 16) + 2 * amount;
+        if (b > 255) {
+            b = 255;
+        }
 
-      String rs = Integer.toHexString(r).length() == 1 ? "0" + Integer.toHexString(r) : Integer.toHexString(r);
-      String gs = Integer.toHexString(g).length() == 1 ? "0" + Integer.toHexString(g) : Integer.toHexString(g);
-      String bs = Integer.toHexString(b).length() == 1 ? "0" + Integer.toHexString(b) : Integer.toHexString(b);
-      return Integer.parseInt(rs + gs + bs, 16);
-   }
+        if (b < 0) {
+            b = 0;
+        }
+
+        String rs = Integer.toHexString(r)
+            .length() == 1 ? "0" + Integer.toHexString(r) : Integer.toHexString(r);
+        String gs = Integer.toHexString(g)
+            .length() == 1 ? "0" + Integer.toHexString(g) : Integer.toHexString(g);
+        String bs = Integer.toHexString(b)
+            .length() == 1 ? "0" + Integer.toHexString(b) : Integer.toHexString(b);
+        return Integer.parseInt(rs + gs + bs, 16);
+    }
 }
