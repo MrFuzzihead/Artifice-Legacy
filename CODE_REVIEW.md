@@ -212,6 +212,21 @@ if (ItemSledge.getIngredientsForBlock(world, target.x, target.y, target.z, stack
 returns `null` and the for-each throws. Cache the first result in a local. Also: `stack.setItemDamage(+1)` bypasses
 `damageItem` (no Unbreaking, no creative guard, can exceed `maxDamage`).
 
+**Status: fixed on `refactor/1.1.6`, and the NPE was hiding a second crash.** Reading the ingredients once is the
+whole fix for the NPE; damage now goes through `attemptDamageItem(1, rand)` and clears the stack when it exceeds
+`maxDamage`, which is what vanilla `damageItem` does without a player to attribute the break to.
+
+With the NPE out of the way the drop loop ran for the first time, and threw **`NoSuchMethodError:
+EntityItem.setVelocity(DDD)V` on a dedicated server**: `Entity.setVelocity` is `@SideOnly(Side.CLIENT)` and is
+stripped from the server jar by Forge's side transformer. The motion is now written to `motionX/motionY/motionZ`
+directly. This whole path had never executed on a server, which is the sort of thing the in-game harness exists to
+find - and did, on the first run.
+
+Game test `checkSledgeDispenser`: fires the behaviour at a real stone block, asserts the block is gone, exactly one
+cobblestone item entity appears near the target (snapshot diff, because the test site is shared), the sledge takes
+exactly one damage, an empty shot damages nothing, and a sledge at `maxDamage` is consumed. Against the old code the
+group reports `threw java.lang.NullPointerException`.
+
 ### 5.3 Enchantment registration can leave nulls that are dereferenced unconditionally — **P0 in large packs**
 
 `ArtificeEnchants.java:15-55` tries ids from `enchantmentStartID` (default 70) to 255 and leaves the field `null`

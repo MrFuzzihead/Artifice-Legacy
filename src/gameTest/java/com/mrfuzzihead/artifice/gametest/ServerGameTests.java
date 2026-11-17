@@ -8,6 +8,7 @@ import java.util.Set;
 import net.minecraft.block.Block;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.enchantment.Enchantment;
+import net.minecraft.entity.item.EntityItem;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
@@ -27,6 +28,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.EnumUpgrades;
 import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
@@ -78,6 +80,7 @@ public final class ServerGameTests {
         run("heating coil", ServerGameTests::checkHeatingCoil);
         run("nuclear battery", ServerGameTests::checkNuclearBattery);
         run("block drops", ServerGameTests::checkBlockDrops);
+        run("sledge dispenser", ServerGameTests::checkSledgeDispenser);
         run("recipes", ServerGameTests::checkRecipes);
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
@@ -903,6 +906,148 @@ public final class ServerGameTests {
                     enchantment.getName() + " id is not shared with another Artifice enchant",
                     ids.add(enchantment.effectId));
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------
+    // Sledge dispenser
+    // ---------------------------------------------------------------------------------------------------------
+
+    /**
+     * CODE_REVIEW 5.2. The behaviour read the block's ingredients twice, the second time after {@code setBlockToAir},
+     * so the second read always returned null and the for-each threw. A dispenser firing a sledge NPE'd on every
+     * shot. The fix reads once; this drives the behaviour directly against a real world so the drop path is real.
+     */
+    private static void checkSledgeDispenser() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        try {
+            site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
+            site.setBlock(site.x, site.y, site.z, Blocks.stone, 0);
+
+            // The dispenser sits below the target and faces up, so the sledge swings at the stone above it.
+            FakeBlockSource source = new FakeBlockSource(world, site.x, site.y - 1, site.z, 1);
+
+            // Snapshot the nearby drops: this site is reused by every section, so a raw count sees other tests' items.
+            List<EntityItem> before = entityItemsNear(world, site.x, site.y, site.z);
+
+            ItemStack sledge = new ItemStack(ArtificeItems.itemSledgeIron);
+            ItemStack returned = new DispenserBehaviorSledge().dispenseStack(source, sledge);
+
+            check("dispenser returns the sledge stack", returned == sledge);
+            check("dispenser removed the block it hit", world.isAirBlock(site.x, site.y, site.z));
+            checkEquals("dispenser damaged the sledge once", 1, sledge.getItemDamage());
+
+            List<EntityItem> dropped = entityItemsNear(world, site.x, site.y, site.z);
+            dropped.removeAll(before);
+            checkEquals("dispenser dropped exactly one item", 1, dropped.size());
+            if (dropped.size() == 1) {
+                ItemStack drop = dropped.get(0)
+                    .getEntityItem();
+                check(
+                    "dispenser dropped cobblestone (the stone's drop)",
+                    drop != null && drop.getItem() == Item.getItemFromBlock(Blocks.cobblestone));
+                checkEquals("dispenser dropped one cobblestone", 1, drop == null ? -1 : drop.stackSize);
+            }
+
+            // Nothing to smash: the sledge must not be damaged and must not throw.
+            int damageBefore = sledge.getItemDamage();
+            site.setBlock(site.x, site.y, site.z, Blocks.air, 0);
+            new DispenserBehaviorSledge().dispenseStack(source, sledge);
+            checkEquals("empty shot does not damage the sledge", damageBefore, sledge.getItemDamage());
+
+            // Vanilla consumes a tool when the damage after the hit exceeds max damage, and attemptDamageItem
+            // reproduces that exactly - so one hit past the cap must empty the stack rather than leave it over.
+            ItemStack worn = new ItemStack(ArtificeItems.itemSledgeIron);
+            worn.setItemDamage(worn.getMaxDamage());
+            site.setBlock(site.x, site.y, site.z, Blocks.stone, 0);
+            new DispenserBehaviorSledge().dispenseStack(source, worn);
+            check("a sledge that reaches max damage is consumed", worn.stackSize == 0);
+        } finally {
+            site.clear();
+        }
+    }
+
+    /** Entity items within three blocks of a coordinate, so a section can see only the drops it caused. */
+    private static List<EntityItem> entityItemsNear(World world, int x, int y, int z) {
+        List<EntityItem> found = new ArrayList<>();
+        double tx = x + 0.5;
+        double ty = y + 0.5;
+        double tz = z + 0.5;
+
+        for (Object entity : world.loadedEntityList) {
+            if (entity instanceof EntityItem) {
+                EntityItem item = (EntityItem) entity;
+                if (item.getDistanceSq(tx, ty, tz) <= 9.0) {
+                    found.add(item);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /** The minimum {@link net.minecraft.dispenser.IBlockSource} the behaviour touches. */
+    private static final class FakeBlockSource implements net.minecraft.dispenser.IBlockSource {
+
+        private final World world;
+        private final int x;
+        private final int y;
+        private final int z;
+        private final int meta;
+
+        private FakeBlockSource(World world, int x, int y, int z, int meta) {
+            this.world = world;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.meta = meta;
+        }
+
+        @Override
+        public World getWorld() {
+            return this.world;
+        }
+
+        @Override
+        public double getX() {
+            return this.x + 0.5;
+        }
+
+        @Override
+        public double getY() {
+            return this.y + 0.5;
+        }
+
+        @Override
+        public double getZ() {
+            return this.z + 0.5;
+        }
+
+        @Override
+        public int getXInt() {
+            return this.x;
+        }
+
+        @Override
+        public int getYInt() {
+            return this.y;
+        }
+
+        @Override
+        public int getZInt() {
+            return this.z;
+        }
+
+        @Override
+        public int getBlockMetadata() {
+            return this.meta;
+        }
+
+        @Override
+        public TileEntity getBlockTileEntity() {
+            return this.world.getTileEntity(this.x, this.y, this.z);
         }
     }
 
