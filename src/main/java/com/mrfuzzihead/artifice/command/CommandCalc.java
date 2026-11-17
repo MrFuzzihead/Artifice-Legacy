@@ -8,11 +8,11 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatComponentTranslation;
 
-import fathzer.javaluator.DoubleEvaluator;
+// import fathzer.javaluator.DoubleEvaluator;
 
 public class CommandCalc extends CommandBase {
 
-    private DoubleEvaluator eva = new DoubleEvaluator();
+    // private DoubleEvaluator eva = new DoubleEvaluator();
 
     public String getCommandName() {
         return "calc";
@@ -41,11 +41,9 @@ public class CommandCalc extends CommandBase {
             }
 
             try {
-                sender.addChatMessage(
-                    new ChatComponentText(
-                        exp + " = "
-                            + this.eva.evaluate(exp)
-                                .toString()));
+                sender.addChatMessage(new ChatComponentText(exp + " = "
+                // + this.eva.evaluate(exp)
+                    + "".toString()));
             } catch (Exception var8) {
                 var8.printStackTrace();
                 sender.addChatMessage(new ChatComponentTranslation("commands.artifice.calc.error", new Object[0]));
