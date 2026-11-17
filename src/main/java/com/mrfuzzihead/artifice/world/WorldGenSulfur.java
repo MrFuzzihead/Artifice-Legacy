@@ -13,6 +13,7 @@ import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.util.BlockCoord;
 import com.mrfuzzihead.artifice.util.ChunkCoord;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.PendingChunks;
 
 import cofh.api.world.IFeatureGenerator;
 import gnu.trove.map.TMap;
@@ -133,6 +134,9 @@ public class WorldGenSulfur implements IFeatureGenerator {
         @Override
         public boolean doGeneration(int chunkX, int chunkZ) {
             ChunkCoord chunk = new ChunkCoord(chunkX, chunkZ);
+            if (!this.toGen.containsKey(chunk)) {
+                this.toGen.put(chunk, new ArrayList());
+            }
             int genned = 0;
             int threshold = this.size / 8;
 
@@ -144,7 +148,8 @@ public class WorldGenSulfur implements IFeatureGenerator {
                     }
 
                     if (!chunk.contains(t) && !this.world.blockExists(t.x, t.y, t.z)) {
-                        return true;
+                        // Suspended, not finished: keep whatever is still queued and retry next tick.
+                        return PendingChunks.hasWork(this.toGen);
                     }
 
                     if (WorldGenSulfur.this.canGenHere(this.world, t)
@@ -191,7 +196,7 @@ public class WorldGenSulfur implements IFeatureGenerator {
                 }
             }
 
-            return true;
+            return PendingChunks.hasWork(this.toGen);
         }
     }
 }

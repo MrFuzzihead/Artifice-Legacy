@@ -357,6 +357,23 @@ if (list.isEmpty()) { it.remove(); }   // inside doGeneration
 
 Also `doGeneration` returns `true` unconditionally, so the return value is currently meaningless.
 
+**Status: fixed on `refactor/1.1.6`.** The "am I finished?" decision is now one shared helper,
+`util/PendingChunks.hasWork(map)`: it drops the chunks whose pending list is empty and returns whether anything is
+left. All four generators (Cluster, Sulfur, Desert/Niter, Cave) return that from both of their `return true;`
+statements - the normal exit *and* the "neighbouring chunk is not loaded, come back later" exit - and each ensures
+the current chunk has a queue entry before touching it, so a drained-then-revisited chunk cannot NPE.
+
+`ArtificeTickHandler` no longer removes a generator from inside an iterator over that generator's own chunk set. The
+sweep is a static, unit-testable pair of methods (`tickSuspendableGenerators`, `tickDelayedGenerators`): peek the
+head, generate one chunk, dequeue when it reports done, and drop a generator whose chunk set is empty *without*
+calling into it. A delayed generator is polled before it runs, so a generator that throws is not retried forever.
+
+Tests: `PendingChunksTest` pins the pruning (drained chunk stops counting and leaves the map, live chunks survive,
+null lists, idempotence, the key set actually shrinking) - four of its seven tests fail against a `hasWork` that only
+checks `isEmpty()`. `ArtificeTickHandlerTest` pins the queue behaviour with fake generators: done leaves the queue,
+suspended stays, one chunk per sweep, an empty generator is dropped without being run, order is head-first, delayed
+generators run one per sweep.
+
 ### 5.7 `BlockFrameScaffold.checkStay` gives up on the first scaffold neighbour — **P2**
 
 `block/frame/BlockFrameScaffold.java:180-202`:
