@@ -126,7 +126,9 @@ public class BlockFrameScaffold extends BlockFrame {
             if (held != null && hb != null
                 && hb.equals(this)
                 && held.getItemDamage() == world.getBlockMetadata(x, y, z)) {
-                while (world.getBlock(x, y, z)
+                // Bound the climb: getBlock above y=255 is not guaranteed to be anything, and a pillar built to the
+                // build limit used to walk past it.
+                while (y < 256 && world.getBlock(x, y, z)
                     .equals(this)) {
                     y++;
                 }
@@ -190,7 +192,9 @@ public class BlockFrameScaffold extends BlockFrame {
                         }
                     }
 
-                    return false;
+                    // Keep looking: an unrooted scaffold neighbour says nothing about the other five sides, and
+                    // returning here dropped blocks that had a perfectly good anchor elsewhere (CODE_REVIEW 5.7).
+                    continue;
                 }
             }
 

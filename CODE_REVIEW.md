@@ -399,12 +399,38 @@ height bound; it relies on `getBlock` above y=255 returning something non-null. 
 `isRooted` (`:205-225`) walks from `y-1` down to bedrock on every neighbour change — for a tall scaffold tower
 that is O(256) per placement and per neighbour update. See §6.
 
+**Status: fixed on `refactor/1.1.6`** — `return false` is now `continue`, and the climb in `onBlockClicked` is
+bounded at `y < 256`.
+
+The analysis was right about the mechanism but wrong about how often it bites, and the test proved it: an
+**anchored neighbour of the same tier** was already rescued by the radius search that runs inside the same
+iteration (`c.getRadiusMatches(...)` scans a cube of `overhang` around the block, so a direct neighbour is always
+in it). The observable case is a scaffold neighbour of a **different tier**: `t.blockEquals(...)` is false, so the
+radius search never runs, and the `return false` ends the search before the loop reaches the anchored side. Two
+scaffolds of different metals side by side, one of them floating, is enough to drop a block that had a good anchor.
+
+The in-game test places exactly that: stone, a same-tier anchored scaffold to the SOUTH, the floating block,
+then an other-tier scaffold to the NORTH - which is the placement that notifies the floating block. Old code: the
+block is gone (`got BlockAir`). New code: it stays, `canBlockStay` agrees, and removing the anchor's ground still
+drops it.
+
 ### 5.8 `BlockLogicRedstone.canConnectRedstone` uses the wrong side table — **P2**
 
 `block/functional/BlockLogicRedstone.java:150-168` maps `side → sides[…]` with a hand-written table
 (`-1→1, 0→2, 1→5, 2→3, 3→4`), while `isProvidingWeakPower` (`:133`) uses `ForgeDirection.OPPOSITES[side]`
 (`0→1, 1→0, 2→3, 3→2, 4→5, 5→4`). The two disagree, so the block can render a redstone connection on a face it
 does not actually read or emit on. Use `ForgeDirection.OPPOSITES[side]` in both.
+
+**Status: fixed on `refactor/1.1.6`.** `canConnectRedstone` now reads `sides[OPPOSITES[side]]`, the same expression
+`isProvidingWeakPower` uses, so the face that renders a connection is the face that emits. The unknown-direction
+call (`side == -1`, which vanilla and several wire mods use to ask "do you connect at all?") returns true when any
+face is configured instead of silently answering for the UP face, and an out-of-range side no longer indexes off
+the end of the array.
+
+The in-game test sets one POSITIVE and one OUTPUT face and asserts, for all six directions, that
+`canConnectRedstone(side)` agrees with `sides[OPPOSITES[side]]` - plus the specific UP/NORTH cases and the `-1`
+query. Against the old table, 3 of those fail (DOWN and UP both report no connection, and the "connects upward"
+assertion fails).
 
 ### 5.9 `BlockOre` dereferences a possibly-absent ore-dictionary entry — **P2**
 

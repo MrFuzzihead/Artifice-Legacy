@@ -551,6 +551,34 @@ public final class ServerGameTests {
             world.setBlockToAir(site.x, site.y - 1, site.z);
 
             checkEquals("scaffold without support is removed", Blocks.air, world.getBlock(site.x, site.y, site.z));
+
+            // CODE_REVIEW 5.7: a floating scaffold must stay up if *any* same-meta neighbour is anchored. The
+            // check used to abort on the first scaffold neighbour it met (whatever its tier) instead of looking at
+            // the other five sides, so a mixed-tier structure dropped blocks that had a good anchor.
+            int cx = site.x;
+            int cy = site.y;
+            int cz = site.z;
+
+            site.setBlock(cx, cy - 1, cz + 1, Blocks.stone, 0); // ground for the anchor
+            site.setBlock(cx, cy, cz + 1, ArtificeBlocks.blockScaffold, 0); // SOUTH: same tier, anchored
+            site.setBlock(cx, cy, cz, ArtificeBlocks.blockScaffold, 0); // the block under test, floating
+            site.setBlock(cx, cy, cz - 1, ArtificeBlocks.blockScaffold, 1); // NORTH: other tier, unanchored
+
+            // This is the observable symptom: placing the other-tier neighbour notifies the floating block, whose
+            // neighbour check used to stop at the first scaffold it saw and drop itself.
+            checkEquals(
+                "the block survives the neighbour update that used to drop it",
+                ArtificeBlocks.blockScaffold,
+                world.getBlock(cx, cy, cz));
+            check(
+                "an unanchored scaffold of another tier does not cancel an anchored neighbour",
+                ArtificeBlocks.blockScaffold.canBlockStay(world, cx, cy, cz));
+
+            // Remove the anchor's ground: now nothing within reach is anchored and the block must go.
+            world.setBlockToAir(cx, cy - 1, cz + 1);
+            check(
+                "with no anchored neighbour at all the scaffold cannot stay",
+                !ArtificeBlocks.blockScaffold.canBlockStay(world, cx, cy, cz));
         } finally {
             site.clear();
         }
@@ -597,6 +625,30 @@ public final class ServerGameTests {
             world.setBlockToAir(site.x, site.y + 1, site.z);
             logic.updateEntity();
             checkEquals("digital logic without power outputs 0", 0, logic.power);
+
+            // CODE_REVIEW 5.8: canConnectRedstone must agree with isProvidingWeakPower, or the block renders a
+            // connection on a face it does not emit on. With OUTPUT on DOWN only, the only connected face is UP.
+            for (ForgeDirection dir : ForgeDirection.VALID_DIRECTIONS) {
+                int side = dir.ordinal();
+                // The contract: a face renders a connection when the state behind it is configured, and the state
+                // behind it is read with the same mapping isProvidingWeakPower uses.
+                boolean configured = logic.sides[ForgeDirection.OPPOSITES[side]] != TileEntityLogic.SideState.DISABLED;
+                checkEquals(
+                    "logic connection on " + dir + " matches the state behind it",
+                    configured,
+                    ArtificeBlocks.blockLogicRedstone.canConnectRedstone(world, site.x, site.y, site.z, side));
+            }
+            check(
+                "logic connects upward where it emits",
+                ArtificeBlocks.blockLogicRedstone
+                    .canConnectRedstone(world, site.x, site.y, site.z, ForgeDirection.UP.ordinal()));
+            check(
+                "logic does not connect on an idle face",
+                !ArtificeBlocks.blockLogicRedstone
+                    .canConnectRedstone(world, site.x, site.y, site.z, ForgeDirection.NORTH.ordinal()));
+            check(
+                "logic answers the 'any connection?' query",
+                ArtificeBlocks.blockLogicRedstone.canConnectRedstone(world, site.x, site.y, site.z, -1));
 
             // A NEGATIVE side inverts the input for digital mode.
             logic.sides[ForgeDirection.UP.ordinal()] = TileEntityLogic.SideState.NEGATIVE;
