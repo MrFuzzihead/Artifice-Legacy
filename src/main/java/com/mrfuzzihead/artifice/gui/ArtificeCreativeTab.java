@@ -8,7 +8,6 @@ import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 
 import com.mrfuzzihead.artifice.ArtificeBlocks;
-import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 
@@ -36,7 +35,7 @@ public class ArtificeCreativeTab extends CreativeTabs {
         super.displayAllReleventItems(itemList);
         if (this.getTabLabel()
             .equals(ArtificeCore.mainTab.getTabLabel())) {
-            if (ArtificeConfig.enchantmentInvisibleEnable) {
+            if (ArtificeEnchants.hasInvisible()) {
                 itemList.add(
                     Items.enchanted_book.getEnchantedItemStack(
                         new EnchantmentData(
@@ -44,7 +43,7 @@ public class ArtificeCreativeTab extends CreativeTabs {
                             ArtificeEnchants.enchantmentInvisible.getMaxLevel())));
             }
 
-            if (ArtificeConfig.enchantmentSoulstealingEnable) {
+            if (ArtificeEnchants.hasSoulstealing()) {
                 for (int i = 1; i < ArtificeEnchants.enchantmentSoulstealing.getMaxLevel() + 1; i++) {
                     itemList.add(
                         Items.enchanted_book.getEnchantedItemStack(
@@ -52,7 +51,7 @@ public class ArtificeCreativeTab extends CreativeTabs {
                 }
             }
 
-            if (ArtificeConfig.enchantmentResistanceEnable) {
+            if (ArtificeEnchants.hasResistance()) {
                 for (int i = 1; i < ArtificeEnchants.enchantmentResistance.getMaxLevel() + 1; i++) {
                     itemList.add(
                         Items.enchanted_book.getEnchantedItemStack(

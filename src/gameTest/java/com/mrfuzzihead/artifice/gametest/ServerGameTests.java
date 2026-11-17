@@ -7,6 +7,7 @@ import java.util.Set;
 
 import net.minecraft.block.Block;
 import net.minecraft.creativetab.CreativeTabs;
+import net.minecraft.enchantment.Enchantment;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
@@ -23,6 +24,7 @@ import net.minecraftforge.oredict.OreDictionary;
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
+import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.recipe.EnumUpgrades;
@@ -79,6 +81,7 @@ public final class ServerGameTests {
         run("recipes", ServerGameTests::checkRecipes);
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
+        run("enchantments", ServerGameTests::checkEnchantments);
         run("known bugs", ServerGameTests::checkKnownBugs);
 
         return failures;
@@ -812,6 +815,61 @@ public final class ServerGameTests {
         check("the furnace RF cost is positive", ArtificeConfig.RFperFurnaceHeat > 0);
         check("the battery capacity is positive", ArtificeConfig.nuclearBatteryCapacity > 0);
         checkEquals("fourteen upgrade entries", 14, EnumUpgrades.values().length);
+    }
+
+    // ---------------------------------------------------------------------------------------------------------
+    // Enchantments
+    // ---------------------------------------------------------------------------------------------------------
+
+    /**
+     * The enchantment ids are a save-compatibility contract, not an implementation detail. 1.1.5R and everything
+     * before it allocated 70/71/72 in this order, and every enchanted item in a pack world refers to its enchantment
+     * by number. FuzziTweaks' mixin existed only to force that allocation over the probe-based code; this asserts the
+     * in-tree version reproduces it, so a reorder or a changed start id fails CI instead of silently rewriting what
+     * an existing item does.
+     */
+    private static void checkEnchantments() {
+        final Enchantment invisible = ArtificeEnchants.enchantmentInvisible;
+        final Enchantment soulstealing = ArtificeEnchants.enchantmentSoulstealing;
+        final Enchantment resistance = ArtificeEnchants.enchantmentResistance;
+
+        checkEquals("enchantment start id", 70, ArtificeConfig.enchantmentStartID);
+
+        check("invisible enchant registered", ArtificeEnchants.hasInvisible());
+        check("soulstealing enchant registered", ArtificeEnchants.hasSoulstealing());
+        check("resistance enchant registered", ArtificeEnchants.hasResistance());
+
+        // The stock allocation order is invisible, soulstealing, resistance, each taking the lowest free id at or
+        // above the start id, so the three land on consecutive numbers.
+        if (invisible != null) {
+            checkEquals("invisible enchant id", 70, invisible.effectId);
+        }
+        if (soulstealing != null) {
+            checkEquals("soulstealing enchant id", 71, soulstealing.effectId);
+        }
+        if (resistance != null) {
+            checkEquals("resistance enchant id", 72, resistance.effectId);
+        }
+
+        // The list is the authority: an enchantment that is not in its own slot is either overwritten or shares one.
+        for (Enchantment enchantment : new Enchantment[] { invisible, soulstealing, resistance }) {
+            if (enchantment == null) {
+                continue;
+            }
+            final int id = enchantment.effectId;
+            check(
+                enchantment.getName() + " occupies its own id " + id,
+                id >= 0 && id < Enchantment.enchantmentsList.length && Enchantment.enchantmentsList[id] == enchantment);
+        }
+
+        final Set<Integer> ids = new HashSet<>();
+        for (Enchantment enchantment : new Enchantment[] { invisible, soulstealing, resistance }) {
+            if (enchantment != null) {
+                check(
+                    enchantment.getName() + " id is not shared with another Artifice enchant",
+                    ids.add(enchantment.effectId));
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------

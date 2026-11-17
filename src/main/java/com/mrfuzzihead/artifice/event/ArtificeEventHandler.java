@@ -16,7 +16,7 @@ public class ArtificeEventHandler {
 
     @SubscribeEvent
     public void onDeath(LivingDeathEvent event) {
-        if (event.source.getEntity() instanceof EntityPlayer && ArtificeConfig.enchantmentSoulstealingEnable) {
+        if (event.source.getEntity() instanceof EntityPlayer && ArtificeEnchants.hasSoulstealing()) {
             EntityPlayer player = (EntityPlayer) event.source.getEntity();
             ItemStack equipped = player.getCurrentEquippedItem();
             if (equipped != null) {
@@ -38,7 +38,7 @@ public class ArtificeEventHandler {
     @SubscribeEvent
     public void onDamage(LivingHurtEvent event) {
         if ((event.source.isMagicDamage() || event.source.getDamageType()
-            .equals("wither")) && ArtificeConfig.enchantmentResistanceEnable) {
+            .equals("wither")) && ArtificeEnchants.hasResistance()) {
             int reslvl = 0;
 
             for (int i = 1; i <= 4; i++) {

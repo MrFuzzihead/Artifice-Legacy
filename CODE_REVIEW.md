@@ -49,6 +49,10 @@ are not codebase defects, but they decide whether the migration boots at all.
 | P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
 | P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
 
+P1 and P2 are **done**, in two halves that still have to be released together: the in-tree allocation and the
+70/71/72 assertion are on `refactor/1.1.6` here (§5.3), and the mixin, its config key and FuzziTweaks'
+`shukaro.artifice` compile dependency are gone on `refactor/drop-artifice-mixin` there. P3 and P4 are untouched.
+
 ---
 
 ## 1. Method
@@ -266,6 +270,13 @@ stock config, so a reorder fails CI instead of a save.
 This exact logic currently ships as a third-party Mixin (`FuzziTweaks`,
 `ArtificeEnchantsMixin#fuzziTweaks$findFreeEnchantID`) because it was the only way to patch a released mod. Moving
 it in-tree is what lets that mixin be deleted — which the namespace migration requires anyway (§0.1, E.3).
+
+**Status: fixed on `refactor/1.1.6`.** `ArtificeEnchants.initEnchants` now allocates the way the mixin did — a
+verified-free id per enchantment, `Enchantment.enchantmentsList.length` read at run time, same order and start id,
+plus a `try`/`catch` that logs at error and leaves the field null instead of dying — and the four call sites ask
+`ArtificeEnchants.hasInvisible()` / `hasSoulstealing()` / `hasResistance()` (config flag *and* registration
+succeeded) instead of the config flag alone. The game test adds ids 70/71/72, "each enchantment occupies its own
+`enchantmentsList` slot" and "no two share an id". FuzziTweaks' side is branch `refactor/drop-artifice-mixin`.
 
 ### 5.4 `MiscUtils` neighbour helpers visit a permuted subset of the six sides — **P1**
 
