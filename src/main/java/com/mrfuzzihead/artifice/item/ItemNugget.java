@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -28,7 +29,7 @@ public class ItemNugget extends ItemArtifice {
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIconFromDamage(int meta) {
-        return this.icons[meta];
+        return ArrayUtils.getOrFirst(this.icons, meta);
     }
 
     @SideOnly(Side.CLIENT)

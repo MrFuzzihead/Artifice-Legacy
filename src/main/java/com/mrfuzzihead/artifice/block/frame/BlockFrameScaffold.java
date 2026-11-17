@@ -15,6 +15,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.BlockCoord;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -59,22 +60,16 @@ public class BlockFrameScaffold extends BlockFrame {
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(int side, int meta) {
-        if (meta >= ArtificeConfig.tiers.length) {
-            meta = 0;
-        }
-
-        return side != 0 && side != 1 ? this.sideIcons[meta] : this.icons[meta];
+        return ArrayUtils.getOrFirst(side != 0 && side != 1 ? this.sideIcons : this.icons, meta);
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(IBlockAccess access, int x, int y, int z, int side) {
-        int meta = access.getBlockMetadata(x, y, z);
-        if (meta > ArtificeConfig.tiers.length) {
-            meta = 0;
-        }
-
-        return side != 0 && side != 1 ? this.sideIcons[access.getBlockMetadata(x, y, z)] : this.getIcon(side, meta);
+        // The side branch used to index sideIcons with the raw metadata, unchecked - a corrupt meta was an AIOOBE
+        // from inside chunk rendering.
+        return ArrayUtils
+            .getOrFirst(side != 0 && side != 1 ? this.sideIcons : this.icons, access.getBlockMetadata(x, y, z));
     }
 
     @SideOnly(Side.CLIENT)

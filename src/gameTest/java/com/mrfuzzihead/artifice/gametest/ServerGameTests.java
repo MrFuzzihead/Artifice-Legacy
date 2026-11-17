@@ -28,6 +28,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.EnumUpgrades;
 import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
@@ -321,21 +322,43 @@ public final class ServerGameTests {
      * without {@code @SideOnly(Side.CLIENT)}, so the overrides silently become brand-new methods and any
      * server-side call to one dies with {@code NoSuchMethodError}. This detects the mismatch without tripping it.
      */
+    /**
+     * CODE_REVIEW 5.11. {@code getTabIconItem}, {@code getTranslatedTabLabel} and {@code displayAllReleventItems}
+     * are client-only on {@link CreativeTabs} and are removed from the server jar by FML's side transformer. With
+     * the annotation they are removed from {@link ArtificeCreativeTab} too, which is what makes the class load
+     * without a missing override; without it they survive as *new* methods that call a {@code super} member the
+     * server no longer has, and any server-side mod walking the tab list gets
+     * {@code NoSuchMethodError: CreativeTabs.displayAllReleventItems}.
+     *
+     * <p>
+     * So on a dedicated server the assertion is absence: an unannotated override shows up here and fails. The
+     * annotations themselves are asserted in {@code ArtificeCreativeTabTest} (plain JVM), where the stripping does
+     * not happen.
+     * </p>
+     */
     private static void checkCreativeTabSideOnly() {
-        boolean superHasDisplay = false;
-        for (java.lang.reflect.Method method : CreativeTabs.class.getDeclaredMethods()) {
-            if (method.getName()
-                .equals("displayAllReleventItems")) superHasDisplay = true;
-        }
+        check(
+            "the dedicated server has no CreativeTabs.displayAllReleventItems",
+            findDeclaredMethod(CreativeTabs.class, "displayAllReleventItems") == null);
 
-        knownBug(
-            "ArtificeCreativeTab overrides client-only CreativeTabs methods without @SideOnly(CLIENT)",
-            !superHasDisplay);
+        String[] clientOnly = { "getTabIconItem", "getTranslatedTabLabel", "displayAllReleventItems" };
+        for (String name : clientOnly) {
+            check(
+                "ArtificeCreativeTab." + name + " was stripped on the server (it is @SideOnly(CLIENT))",
+                findDeclaredMethod(ArtificeCreativeTab.class, name) == null);
+        }
     }
 
-    // ---------------------------------------------------------------------------------------------------------
-    // Metadata round trips
-    // ---------------------------------------------------------------------------------------------------------
+    private static java.lang.reflect.Method findDeclaredMethod(Class<?> type, String name) {
+        for (java.lang.reflect.Method method : type.getDeclaredMethods()) {
+            if (method.getName()
+                .equals(name)) {
+                return method;
+            }
+        }
+
+        return null;
+    }
 
     private static void checkFloraMetadata() {
         World world = overworld();

@@ -5,7 +5,6 @@ import net.minecraft.tileentity.TileEntity;
 
 import org.junit.Assert;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -75,15 +74,67 @@ public class TileEntityLogicNbtTest {
     }
 
     /**
-     * Regression: reading a tile entity that predates the {@code sides} key (or lost it) must fall back to the
-     * constructor defaults rather than throwing. It currently throws; the fix is a length check in
-     * {@code TileEntityLogic#readFromNBT}.
+     * Regression (CODE_REVIEW 5.10): reading a tile entity that predates the {@code sides} key (or lost it) must
+     * fall back to the constructor defaults rather than throwing out of chunk load.
      */
     @Test
-    @Ignore("Known bug: TileEntityLogic.readFromNBT indexes the sides array without a length check")
     public void readToleratesAMissingSidesTag() {
         TileEntityLogic loaded = new TileEntityLogic();
         loaded.readFromNBT(new NBTTagCompound());
+
+        for (TileEntityLogic.SideState state : loaded.sides) {
+            Assert.assertEquals(TileEntityLogic.SideState.DISABLED, state);
+        }
+    }
+
+    @Test
+    public void readToleratesAShortSidesTag() {
+        TileEntityLogic logic = new TileEntityLogic();
+        logic.sides[1] = TileEntityLogic.SideState.OUTPUT;
+
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setIntArray(
+            "sides",
+            new int[] { TileEntityLogic.SideState.NEGATIVE.ordinal(), TileEntityLogic.SideState.POSITIVE.ordinal() });
+
+        TileEntityLogic loaded = new TileEntityLogic();
+        loaded.readFromNBT(tag);
+
+        Assert.assertEquals(TileEntityLogic.SideState.NEGATIVE, loaded.sides[0]);
+        Assert.assertEquals(TileEntityLogic.SideState.POSITIVE, loaded.sides[1]);
+        for (int i = 2; i < 6; i++) {
+            Assert.assertEquals(
+                "side " + i + " had no stored value",
+                TileEntityLogic.SideState.DISABLED,
+                loaded.sides[i]);
+        }
+    }
+
+    @Test
+    public void readToleratesOutOfRangeOrdinals() {
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setIntArray(
+            "sides",
+            new int[] { -1, 99, 0, Integer.MAX_VALUE, TileEntityLogic.SideState.NEGATIVE.ordinal(), 3 });
+
+        TileEntityLogic loaded = new TileEntityLogic();
+        loaded.readFromNBT(tag);
+
+        Assert.assertEquals(TileEntityLogic.SideState.DISABLED, loaded.sides[0]);
+        Assert.assertEquals(TileEntityLogic.SideState.DISABLED, loaded.sides[1]);
+        Assert.assertEquals(TileEntityLogic.SideState.DISABLED, loaded.sides[2]);
+        Assert.assertEquals(TileEntityLogic.SideState.DISABLED, loaded.sides[3]);
+        Assert.assertEquals(TileEntityLogic.SideState.NEGATIVE, loaded.sides[4]);
+        Assert.assertEquals(TileEntityLogic.SideState.values()[3], loaded.sides[5]);
+    }
+
+    @Test
+    public void readToleratesAnEmptySidesTag() {
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setIntArray("sides", new int[0]);
+
+        TileEntityLogic loaded = new TileEntityLogic();
+        loaded.readFromNBT(tag);
 
         for (TileEntityLogic.SideState state : loaded.sides) {
             Assert.assertEquals(TileEntityLogic.SideState.DISABLED, state);

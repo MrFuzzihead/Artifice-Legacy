@@ -96,10 +96,16 @@ public class TileEntityLogic extends TileEntity {
 
     public void readFromNBT(NBTTagCompound tag) {
         super.readFromNBT(tag);
+
+        // getIntArray returns an empty array for a missing key, and a value from a future build or a world-editing
+        // tool can be out of range: both used to throw out of chunk load. Anything unrecognised is DISABLED, which
+        // is what a fresh tile entity has (CODE_REVIEW 5.10).
         int[] sidesInt = tag.getIntArray("sides");
+        SideState[] states = TileEntityLogic.SideState.values();
 
         for (int i = 0; i < 6; i++) {
-            this.sides[i] = TileEntityLogic.SideState.values()[sidesInt[i]];
+            int stored = sidesInt != null && i < sidesInt.length ? sidesInt[i] : -1;
+            this.sides[i] = stored >= 0 && stored < states.length ? states[stored] : SideState.DISABLED;
         }
 
         this.power = tag.getInteger("power");

@@ -430,6 +430,10 @@ A tile entity written by an older build, by a world-editing tool, or after a fut
 
 Acceptance test: `TileEntityLogicNbtTest.readToleratesAMissingSidesTag` (`@Ignore`d today).
 
+**Status: fixed on `refactor/1.1.6`.** The read is length-checked and range-checked per slot: a missing key, a short
+array, an empty array and an out-of-range ordinal all fall back to `DISABLED`, which is what a fresh tile entity
+has. Four tests: missing, short, out-of-range (including `-1`, `99` and `Integer.MAX_VALUE`) and empty.
+
 ### 5.11 `ArtificeCreativeTab` overrides client-only methods without `@SideOnly` — **P2**
 
 `gui/ArtificeCreativeTab.java:21` and `:35`. Vanilla `CreativeTabs#getTabIconItem`,
@@ -448,7 +452,20 @@ browsers, recipe dumpers) that touches the tab list will hit it. Fix: annotate t
 the whole class) `@SideOnly(Side.CLIENT)`, and guard `getTabIconItem`'s callers.
 
 Note also that `getTranslatedTabLabel()` returns the raw label, so the tab is not localised — `itemGroup.*` keys
-in the lang file are unused.
+in the lang file are unused. (There are no `itemGroup.*` keys in this mod's lang files, so returning the raw label
+displays correctly; wiring up translation would need those keys first, so it is left alone.)
+
+**Status: fixed on `refactor/1.1.6`.** `getTabIconItem`, `getTranslatedTabLabel` and `displayAllReleventItems` now
+carry `@SideOnly(Side.CLIENT)`, matching the members they override.
+
+The old game-test probe was a **false negative** and is replaced. It checked `CreativeTabs.getDeclaredMethods()` for
+`displayAllReleventItems` and reported "still present", which looked like the premise was wrong. It is not: on the
+dedicated server run, `CreativeTabs` does not declare the method, and with the annotations in place neither does
+`ArtificeCreativeTab` — the transformer strips both. So the assertion is now *absence*: on a server, an
+unannotated override survives into the jar as a new method and shows up in `getDeclaredMethods()`, and an annotated
+one does not. The annotations themselves are asserted in a plain-JVM test, where stripping does not apply:
+`ArtificeCreativeTabTest` reflects over every `ArtificeCreativeTab` method that matches a client-only `CreativeTabs`
+member and requires the same annotation (2 of its 3 tests fail without the annotations).
 
 ### 5.12 Off-by-one bounds checks in `getIcon` — **P2**
 
@@ -458,7 +475,7 @@ the end:
 | File | Line | Expression | Consequence |
 |---|---|---|---|
 | `block/world/BlockFlora.java` | 38 | `meta > flora.length` | `meta == 5` → AIOOBE (5 is not a valid meta anyway, but it comes from NBT) |
-| `block/decorative/BlockLamp.java` | 105 | `meta > 15` | `meta == 16` → AIOOBE on a corrupt save |
+| `block/decorative/BlockLamp.java` | 105 | `meta > 15` | nothing - `getIcon` ignores metadata entirely, so the clamp is dead code (see below) |
 | `block/frame/BlockFrameBlastWall.java` | 52 | `meta > tiers.length` | `meta == 4` → AIOOBE |
 | `block/frame/BlockFrameGlassWall.java` | 61 | `meta > tiers.length` | same |
 | `block/frame/BlockFrameScaffold.java` | 73 | `meta > tiers.length` | same |
@@ -467,6 +484,21 @@ the end:
 `BlockFrameScaffold.getIcon(IBlockAccess, …)` (`:83`) is worse: it indexes `sideIcons[access.getBlockMetadata(…)]`
 with no check at all. `ItemUpgrade`/`ItemCoin`/`ItemNugget`/`ItemSteel` have no check either. A single helper
 (`ArrayUtils.getOrDefault(array, meta, fallback)`) would remove the whole class of bug.
+
+**Status: fixed on `refactor/1.1.6`** with `util/ArrayUtils.getOrFirst(array, index)` (clamp to the first entry)
+and `getOrDefault(array, index, fallback)`. Sites: `BlockFlora.getIcon`, `BlockFrameScaffold.getIcon` (both forms -
+the `IBlockAccess` one now clamps the side-icons lookup too), `BlockFrameBlastWall`/`BlockFrameGlassWall`'s
+`IBlockAccess` forms (they double-clamped; now they just delegate), `ItemDye`, `ItemUpgrade`, `ItemCoin`,
+`ItemNugget`. `ArrayUtils` is null-safe and empty-safe, so a table that failed to register icons returns `null`
+instead of throwing.
+
+One correction to the table: `BlockLamp` was listed as an AIOOBE, but its `getIcon(int, int)` returns `this.icon`
+and ignores metadata, so the `meta > 15` clamp it performs is dead code rather than a bug. Not changed - the clamp
+is harmless and its `IBlockAccess` form just forwards. `ItemSteel` was also listed as unchecked; it branches on
+`meta == 0` and never indexes, so it is fine.
+
+Tests: `ArrayUtilsTest` (8 cases: in range, one past the end, negative, `Integer.MAX_VALUE`, null array, empty array,
+null fallback, and a loop over every index of a table).
 
 ### 5.13 `BlockRock` registers the paver texture as the antipaver texture — **P2 (visual)**
 

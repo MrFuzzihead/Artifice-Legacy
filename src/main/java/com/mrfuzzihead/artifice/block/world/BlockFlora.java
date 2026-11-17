@@ -15,6 +15,7 @@ import net.minecraft.world.World;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -35,7 +36,8 @@ public class BlockFlora extends BlockFlower {
 
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(int side, int meta) {
-        return meta > ArtificeConfig.flora.length ? icons[0] : icons[meta];
+        // Metadata comes from NBT, so "meta == flora.length" is reachable even though it is not a valid subtype.
+        return ArrayUtils.getOrFirst(this.icons, meta);
     }
 
     @SideOnly(Side.CLIENT)

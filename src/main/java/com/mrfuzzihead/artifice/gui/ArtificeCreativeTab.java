@@ -11,12 +11,21 @@ import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
+
 public class ArtificeCreativeTab extends CreativeTabs {
 
     public ArtificeCreativeTab(String label) {
         super(label);
     }
 
+    // getTabIconItem, getTabLabel, getTranslatedTabLabel and displayAllReleventItems are @SideOnly(CLIENT) on
+    // CreativeTabs, and FML's SideTransformer removes them from the server jar. Without the matching annotation
+    // these overrides stop being overrides on a dedicated server - they become new methods that call a super method
+    // which no longer exists, so any server-side mod that walks the tab list gets
+    // NoSuchMethodError: CreativeTabs.displayAllReleventItems (CODE_REVIEW 5.11).
+    @SideOnly(Side.CLIENT)
     public Item getTabIconItem() {
         if (this.getTabLabel()
             .equals(ArtificeCore.mainTab.getTabLabel())) {
@@ -27,10 +36,12 @@ public class ArtificeCreativeTab extends CreativeTabs {
         }
     }
 
+    @SideOnly(Side.CLIENT)
     public String getTranslatedTabLabel() {
         return this.getTabLabel();
     }
 
+    @SideOnly(Side.CLIENT)
     public void displayAllReleventItems(List itemList) {
         super.displayAllReleventItems(itemList);
         if (this.getTabLabel()
