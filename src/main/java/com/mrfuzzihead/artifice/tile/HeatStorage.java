@@ -1,52 +1,53 @@
-package shukaro.artifice.tile;
+package com.mrfuzzihead.artifice.tile;
 
 import net.minecraft.nbt.NBTTagCompound;
 
 public class HeatStorage implements IHeatProvider, IHeatReceiver {
-   private int heat;
-   private int maxHeat;
 
-   public HeatStorage(int maxHeat) {
-      this.maxHeat = maxHeat;
-      this.heat = 0;
-   }
+    private int heat;
+    private int maxHeat;
 
-   @Override
-   public int getHeat() {
-      return this.heat;
-   }
+    public HeatStorage(int maxHeat) {
+        this.maxHeat = maxHeat;
+        this.heat = 0;
+    }
 
-   @Override
-   public int getMaxHeat() {
-      return this.maxHeat;
-   }
+    @Override
+    public int getHeat() {
+        return this.heat;
+    }
 
-   @Override
-   public int extractHeat(int amount) {
-      int toExtract = Math.min(this.heat, amount);
-      this.heat -= toExtract;
-      return toExtract;
-   }
+    @Override
+    public int getMaxHeat() {
+        return this.maxHeat;
+    }
 
-   @Override
-   public int receiveHeat(int amount) {
-      int toReceive = Math.min(this.maxHeat - this.heat, amount);
-      this.heat += toReceive;
-      return toReceive;
-   }
+    @Override
+    public int extractHeat(int amount) {
+        int toExtract = Math.min(this.heat, amount);
+        this.heat -= toExtract;
+        return toExtract;
+    }
 
-   public void readFromNBT(NBTTagCompound tag) {
-      this.heat = tag.getInteger("Heat");
-      if (this.heat > this.maxHeat) {
-         this.heat = this.maxHeat;
-      }
-   }
+    @Override
+    public int receiveHeat(int amount) {
+        int toReceive = Math.min(this.maxHeat - this.heat, amount);
+        this.heat += toReceive;
+        return toReceive;
+    }
 
-   public void writeToNBT(NBTTagCompound tag) {
-      if (this.heat < 0) {
-         this.heat = 0;
-      }
+    public void readFromNBT(NBTTagCompound tag) {
+        this.heat = tag.getInteger("Heat");
+        if (this.heat > this.maxHeat) {
+            this.heat = this.maxHeat;
+        }
+    }
 
-      tag.setInteger("Heat", this.heat);
-   }
+    public void writeToNBT(NBTTagCompound tag) {
+        if (this.heat < 0) {
+            this.heat = 0;
+        }
+
+        tag.setInteger("Heat", this.heat);
+    }
 }

@@ -1,84 +1,88 @@
-package shukaro.artifice.block.frame;
+package com.mrfuzzihead.artifice.block.frame;
 
-import cpw.mods.fml.common.registry.GameRegistry;
-import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.IIcon;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
-import shukaro.artifice.ArtificeConfig;
-import shukaro.artifice.render.TextureHandler;
+
+import com.mrfuzzihead.artifice.ArtificeConfig;
+import com.mrfuzzihead.artifice.render.TextureHandler;
+
+import cpw.mods.fml.common.registry.GameRegistry;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockFrameBlastWall extends BlockFrame {
-   private IIcon[] icons = new IIcon[4];
 
-   public BlockFrameBlastWall() {
-      this.setBlockName("artifice.reinforced");
-      GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());
-   }
+    private IIcon[] icons = new IIcon[4];
 
-   @SideOnly(Side.CLIENT)
-   @Override
-   public void registerBlockIcons(IIconRegister reg) {
-      TextureHandler.registerConnectedTexture(reg, this, 0, "basic", "blastwall");
-      this.icons[0] = TextureHandler.getConnectedTexture(this, 0, 0).icon;
-      TextureHandler.registerConnectedTexture(reg, this, 1, "reinforced", "blastwall");
-      this.icons[1] = TextureHandler.getConnectedTexture(this, 1, 0).icon;
-      TextureHandler.registerConnectedTexture(reg, this, 2, "industrial", "blastwall");
-      this.icons[2] = TextureHandler.getConnectedTexture(this, 2, 0).icon;
-      TextureHandler.registerConnectedTexture(reg, this, 3, "advanced", "blastwall");
-      this.icons[3] = TextureHandler.getConnectedTexture(this, 3, 0).icon;
-   }
+    public BlockFrameBlastWall() {
+        this.setBlockName("artifice.reinforced");
+        GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());
+    }
 
-   @SideOnly(Side.CLIENT)
-   @Override
-   public IIcon getIcon(int side, int meta) {
-      if (meta >= ArtificeConfig.tiers.length) {
-         meta = 0;
-      }
+    @SideOnly(Side.CLIENT)
+    @Override
+    public void registerBlockIcons(IIconRegister reg) {
+        TextureHandler.registerConnectedTexture(reg, this, 0, "basic", "blastwall");
+        this.icons[0] = TextureHandler.getConnectedTexture(this, 0, 0).icon;
+        TextureHandler.registerConnectedTexture(reg, this, 1, "reinforced", "blastwall");
+        this.icons[1] = TextureHandler.getConnectedTexture(this, 1, 0).icon;
+        TextureHandler.registerConnectedTexture(reg, this, 2, "industrial", "blastwall");
+        this.icons[2] = TextureHandler.getConnectedTexture(this, 2, 0).icon;
+        TextureHandler.registerConnectedTexture(reg, this, 3, "advanced", "blastwall");
+        this.icons[3] = TextureHandler.getConnectedTexture(this, 3, 0).icon;
+    }
 
-      return this.icons[meta];
-   }
+    @SideOnly(Side.CLIENT)
+    @Override
+    public IIcon getIcon(int side, int meta) {
+        if (meta >= ArtificeConfig.tiers.length) {
+            meta = 0;
+        }
 
-   @SideOnly(Side.CLIENT)
-   @Override
-   public IIcon getIcon(IBlockAccess access, int x, int y, int z, int side) {
-      int meta = access.getBlockMetadata(x, y, z);
-      if (meta > ArtificeConfig.tiers.length) {
-         meta = 0;
-      }
+        return this.icons[meta];
+    }
 
-      return this.getIcon(side, meta);
-   }
+    @SideOnly(Side.CLIENT)
+    @Override
+    public IIcon getIcon(IBlockAccess access, int x, int y, int z, int side) {
+        int meta = access.getBlockMetadata(x, y, z);
+        if (meta > ArtificeConfig.tiers.length) {
+            meta = 0;
+        }
 
-   public int getRenderType() {
-      return ArtificeConfig.ctmRenderID;
-   }
+        return this.getIcon(side, meta);
+    }
 
-   public float getExplosionResistance(Entity par1Entity, World world, int x, int y, int z, double explosionX, double explosionY, double explosionZ) {
-      int meta = world.getBlockMetadata(x, y, z);
-      return this.getResistance(meta);
-   }
+    public int getRenderType() {
+        return ArtificeConfig.ctmRenderID;
+    }
 
-   public float getResistance(int meta) {
-      switch (meta) {
-         case 0:
-            return 20.0F;
-         case 1:
-            return 30.0F;
-         case 2:
-            return 50.0F;
-         case 3:
-            return 80.0F;
-         default:
-            return 10.0F;
-      }
-   }
+    public float getExplosionResistance(Entity par1Entity, World world, int x, int y, int z, double explosionX,
+        double explosionY, double explosionZ) {
+        int meta = world.getBlockMetadata(x, y, z);
+        return this.getResistance(meta);
+    }
 
-   @Override
-   public float getBlockHardness(World world, int x, int y, int z) {
-      return super.getBlockHardness(world, x, y, z) + 5.0F;
-   }
+    public float getResistance(int meta) {
+        switch (meta) {
+            case 0:
+                return 20.0F;
+            case 1:
+                return 30.0F;
+            case 2:
+                return 50.0F;
+            case 3:
+                return 80.0F;
+            default:
+                return 10.0F;
+        }
+    }
+
+    @Override
+    public float getBlockHardness(World world, int x, int y, int z) {
+        return super.getBlockHardness(world, x, y, z) + 5.0F;
+    }
 }

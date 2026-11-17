@@ -1,73 +1,74 @@
-package shukaro.artifice.util;
+package com.mrfuzzihead.artifice.util;
 
 import net.minecraft.world.ChunkCoordIntPair;
 import net.minecraft.world.World;
 
 public class ChunkCoord implements Comparable {
-   public int chunkX;
-   public int chunkZ;
 
-   public ChunkCoord(BlockCoord c) {
-      this(c.x >> 4, c.z >> 4);
-   }
+    public int chunkX;
+    public int chunkZ;
 
-   public ChunkCoord(ChunkCoordIntPair c) {
-      this(c.chunkXPos, c.chunkZPos);
-   }
+    public ChunkCoord(BlockCoord c) {
+        this(c.x >> 4, c.z >> 4);
+    }
 
-   public ChunkCoord(int x, int z) {
-      this.chunkX = x;
-      this.chunkZ = z;
-   }
+    public ChunkCoord(ChunkCoordIntPair c) {
+        this(c.chunkXPos, c.chunkZPos);
+    }
 
-   @Override
-   public boolean equals(Object o) {
-      if (!(o instanceof ChunkCoord)) {
-         return false;
-      } else {
-         ChunkCoord chunk = (ChunkCoord)o;
-         return chunk.chunkX == this.chunkX && chunk.chunkZ == this.chunkZ;
-      }
-   }
+    public ChunkCoord(int x, int z) {
+        this.chunkX = x;
+        this.chunkZ = z;
+    }
 
-   @Override
-   public int hashCode() {
-      int hash = this.chunkX;
-      return hash * (31 + this.chunkZ);
-   }
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof ChunkCoord)) {
+            return false;
+        } else {
+            ChunkCoord chunk = (ChunkCoord) o;
+            return chunk.chunkX == this.chunkX && chunk.chunkZ == this.chunkZ;
+        }
+    }
 
-   public boolean isLoaded(World world) {
-      return world.blockExists(this.chunkX << 4, 0, this.chunkZ << 4);
-   }
+    @Override
+    public int hashCode() {
+        int hash = this.chunkX;
+        return hash * (31 + this.chunkZ);
+    }
 
-   public boolean contains(BlockCoord c) {
-      return this.contains(c.x, c.z);
-   }
+    public boolean isLoaded(World world) {
+        return world.blockExists(this.chunkX << 4, 0, this.chunkZ << 4);
+    }
 
-   public boolean contains(int x, int z) {
-      return this.chunkX == x >> 4 && this.chunkZ == z >> 4;
-   }
+    public boolean contains(BlockCoord c) {
+        return this.contains(c.x, c.z);
+    }
 
-   public int getCenterX() {
-      return (this.chunkX << 4) + 8;
-   }
+    public boolean contains(int x, int z) {
+        return this.chunkX == x >> 4 && this.chunkZ == z >> 4;
+    }
 
-   public int getCenterZ() {
-      return (this.chunkZ << 4) + 8;
-   }
+    public int getCenterX() {
+        return (this.chunkX << 4) + 8;
+    }
 
-   @Override
-   public String toString() {
-      return "[" + this.chunkX + ", " + this.chunkZ + "]";
-   }
+    public int getCenterZ() {
+        return (this.chunkZ << 4) + 8;
+    }
 
-   @Override
-   public int compareTo(Object o) {
-      if (o instanceof ChunkCoord) {
-         ChunkCoord other = (ChunkCoord)o;
-         return this.chunkX == other.chunkX ? this.chunkZ - other.chunkZ : this.chunkX - other.chunkX;
-      } else {
-         return 0;
-      }
-   }
+    @Override
+    public String toString() {
+        return "[" + this.chunkX + ", " + this.chunkZ + "]";
+    }
+
+    @Override
+    public int compareTo(Object o) {
+        if (o instanceof ChunkCoord) {
+            ChunkCoord other = (ChunkCoord) o;
+            return this.chunkX == other.chunkX ? this.chunkZ - other.chunkZ : this.chunkX - other.chunkX;
+        } else {
+            return 0;
+        }
+    }
 }

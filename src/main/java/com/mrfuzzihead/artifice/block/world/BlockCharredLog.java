@@ -1,9 +1,7 @@
-package shukaro.artifice.block.world;
+package com.mrfuzzihead.artifice.block.world;
 
-import cpw.mods.fml.common.registry.GameRegistry;
-import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
 import java.util.Random;
+
 import net.minecraft.block.BlockLog;
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.init.Blocks;
@@ -11,57 +9,63 @@ import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.util.IIcon;
 import net.minecraft.world.IBlockAccess;
-import shukaro.artifice.ArtificeCore;
-import shukaro.artifice.block.ItemBlockArtifice;
-import shukaro.artifice.render.TextureHandler;
+
+import com.mrfuzzihead.artifice.ArtificeCore;
+import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
+import com.mrfuzzihead.artifice.render.TextureHandler;
+
+import cpw.mods.fml.common.registry.GameRegistry;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockCharredLog extends BlockLog {
-   private IIcon bark;
-   private IIcon core;
 
-   public BlockCharredLog() {
-      this.setBlockName("artifice.charredlog");
-      this.setCreativeTab(ArtificeCore.worldTab);
-      GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
-   }
+    private IIcon bark;
+    private IIcon core;
 
-   @SideOnly(Side.CLIENT)
-   public void registerBlockIcons(IIconRegister reg) {
-      this.bark = TextureHandler.registerIcon(reg, "charredlogbark", "misc");
-      this.core = TextureHandler.registerIcon(reg, "charredlogcore", "misc");
-   }
+    public BlockCharredLog() {
+        this.setBlockName("artifice.charredlog");
+        this.setCreativeTab(ArtificeCore.worldTab);
+        GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
+    }
 
-   @SideOnly(Side.CLIENT)
-   protected IIcon getSideIcon(int meta) {
-      return this.bark;
-   }
+    @SideOnly(Side.CLIENT)
+    public void registerBlockIcons(IIconRegister reg) {
+        this.bark = TextureHandler.registerIcon(reg, "charredlogbark", "misc");
+        this.core = TextureHandler.registerIcon(reg, "charredlogcore", "misc");
+    }
 
-   @SideOnly(Side.CLIENT)
-   protected IIcon getTopIcon(int meta) {
-      return this.core;
-   }
+    @SideOnly(Side.CLIENT)
+    protected IIcon getSideIcon(int meta) {
+        return this.bark;
+    }
 
-   public boolean canSustainLeaves(IBlockAccess world, int x, int y, int z) {
-      return false;
-   }
+    @SideOnly(Side.CLIENT)
+    protected IIcon getTopIcon(int meta) {
+        return this.core;
+    }
 
-   public int getExpDrop(IBlockAccess world, int meta, int fortune) {
-      return Blocks.coal_ore.getExpDrop(world, meta, fortune);
-   }
+    public boolean canSustainLeaves(IBlockAccess world, int x, int y, int z) {
+        return false;
+    }
 
-   public boolean isWood(IBlockAccess world, int x, int y, int z) {
-      return false;
-   }
+    public int getExpDrop(IBlockAccess world, int meta, int fortune) {
+        return Blocks.coal_ore.getExpDrop(world, meta, fortune);
+    }
 
-   public int damageDropped(int meta) {
-      return 1;
-   }
+    public boolean isWood(IBlockAccess world, int x, int y, int z) {
+        return false;
+    }
 
-   public Item getItemDropped(int meta, Random rand, int fortune) {
-      return Items.coal;
-   }
+    public int damageDropped(int meta) {
+        return 1;
+    }
 
-   public int quantityDropped(int meta, int fortune, Random rand) {
-      return Blocks.coal_ore.quantityDropped(meta, fortune, rand);
-   }
+    public Item getItemDropped(int meta, Random rand, int fortune) {
+        return Items.coal;
+    }
+
+    public int quantityDropped(int meta, int fortune, Random rand) {
+        return Blocks.coal_ore.quantityDropped(meta, fortune, rand);
+    }
 }

@@ -1,9 +1,10 @@
-package shukaro.artifice.tile;
+package com.mrfuzzihead.artifice.tile;
 
 public interface IHeatProvider {
-   int extractHeat(int var1);
 
-   int getHeat();
+    int extractHeat(int var1);
 
-   int getMaxHeat();
+    int getHeat();
+
+    int getMaxHeat();
 }

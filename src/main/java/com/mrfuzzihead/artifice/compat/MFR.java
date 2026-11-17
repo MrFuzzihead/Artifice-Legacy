@@ -1,55 +1,61 @@
-package shukaro.artifice.compat;
+package com.mrfuzzihead.artifice.compat;
 
-import cpw.mods.fml.common.event.FMLInterModComms;
 import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import shukaro.artifice.ArtificeBlocks;
-import shukaro.artifice.ArtificeConfig;
-import shukaro.artifice.ArtificeCore;
+
+import com.mrfuzzihead.artifice.ArtificeBlocks;
+import com.mrfuzzihead.artifice.ArtificeConfig;
+import com.mrfuzzihead.artifice.ArtificeCore;
+
+import cpw.mods.fml.common.event.FMLInterModComms;
 
 public class MFR implements ICompat {
-   @Override
-   public String getModID() {
-      return "MineFactoryReloaded";
-   }
 
-   @Override
-   public void load() {
-      try {
-         FMLInterModComms.sendMessage(this.getModID(), "registerHarvestable_Standard", Block.blockRegistry.getNameForObject(ArtificeBlocks.blockFlora));
-         if (ArtificeConfig.uraniumMFRLaser) {
-            ItemStack uranium = new ItemStack(ArtificeBlocks.blockUranium, 1, 0);
-            NBTTagCompound uraniumTag = uranium.writeToNBT(new NBTTagCompound());
-            uraniumTag.setInteger("value", 60);
-            FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", uraniumTag);
-         }
+    @Override
+    public String getModID() {
+        return "MineFactoryReloaded";
+    }
 
-         if (ArtificeConfig.enderOreMFRLaser) {
-            ItemStack ender = new ItemStack(ArtificeBlocks.blockEnderOre, 1, 0);
-            NBTTagCompound enderTag = ender.writeToNBT(new NBTTagCompound());
-            enderTag.setInteger("value", 80);
-            FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", enderTag);
-         }
+    @Override
+    public void load() {
+        try {
+            FMLInterModComms.sendMessage(
+                this.getModID(),
+                "registerHarvestable_Standard",
+                Block.blockRegistry.getNameForObject(ArtificeBlocks.blockFlora));
+            if (ArtificeConfig.uraniumMFRLaser) {
+                ItemStack uranium = new ItemStack(ArtificeBlocks.blockUranium, 1, 0);
+                NBTTagCompound uraniumTag = uranium.writeToNBT(new NBTTagCompound());
+                uraniumTag.setInteger("value", 60);
+                FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", uraniumTag);
+            }
 
-         if (ArtificeConfig.sulfurMFRLaser) {
-            ItemStack sulfur = new ItemStack(ArtificeBlocks.blockSulfur, 1, 0);
-            NBTTagCompound sulfurTag = sulfur.writeToNBT(new NBTTagCompound());
-            sulfurTag.setInteger("value", 90);
-            FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", sulfurTag);
-         }
+            if (ArtificeConfig.enderOreMFRLaser) {
+                ItemStack ender = new ItemStack(ArtificeBlocks.blockEnderOre, 1, 0);
+                NBTTagCompound enderTag = ender.writeToNBT(new NBTTagCompound());
+                enderTag.setInteger("value", 80);
+                FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", enderTag);
+            }
 
-         if (ArtificeConfig.niterMFRLaser) {
-            ItemStack niter = new ItemStack(ArtificeBlocks.blockNiter, 1, 0);
-            NBTTagCompound niterTag = niter.writeToNBT(new NBTTagCompound());
-            niterTag.setInteger("value", 90);
-            FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", niterTag);
-         }
+            if (ArtificeConfig.sulfurMFRLaser) {
+                ItemStack sulfur = new ItemStack(ArtificeBlocks.blockSulfur, 1, 0);
+                NBTTagCompound sulfurTag = sulfur.writeToNBT(new NBTTagCompound());
+                sulfurTag.setInteger("value", 90);
+                FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", sulfurTag);
+            }
 
-         ArtificeCore.logger.info("MineFactoryReloaded Compat Initialized");
-      } catch (Throwable var3) {
-         ArtificeCore.logger.warn("Couldn't initialize MineFactoryReloaded compat");
-         var3.printStackTrace();
-      }
-   }
+            if (ArtificeConfig.niterMFRLaser) {
+                ItemStack niter = new ItemStack(ArtificeBlocks.blockNiter, 1, 0);
+                NBTTagCompound niterTag = niter.writeToNBT(new NBTTagCompound());
+                niterTag.setInteger("value", 90);
+                FMLInterModComms.sendMessage(this.getModID(), "registerLaserOre", niterTag);
+            }
+
+            ArtificeCore.logger.info("MineFactoryReloaded Compat Initialized");
+        } catch (Throwable var3) {
+            ArtificeCore.logger.warn("Couldn't initialize MineFactoryReloaded compat");
+            var3.printStackTrace();
+        }
+    }
 }
