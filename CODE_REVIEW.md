@@ -633,6 +633,21 @@ furnace throw `ArithmeticException: / by zero`. A negative value inverts the fur
 Clamp every machine value when the config is read (`Math.max(1, …)` for the divisors/rates, `Math.max(0, …)` for
 `coilLoss`), and log the clamp once so the user knows their config was adjusted.
 
+**Status: fixed on `refactor/1.1.6`, and the config surface is now testable.** `ArtificeConfig.initCommon` was split
+into a file-loading wrapper plus `readCommon(Configuration)`, which is package-private and takes an already-loaded
+config - so the whole 149-key surface can be read in a plain JVM. Machine values are clamped where they are read:
+`RFperFurnaceHeat >= 1` (the divisor), `nuclearBatteryCapacity >= 1`, and `nuclearBatteryRate`, `heatingCoilRate`
+and `coilLoss` `>= 0`. Height ranges get the same treatment, because they feed `rand.nextInt(max - min + 1)`: every
+`rockLayers`/`rockClusters`/`rockCaves` min/max pair and the ender/uranium pair get `max = Math.max(min, max)`, so an
+inverted range cannot throw out of worldgen.
+
+No log line for the clamp itself: the value in the file is what the user sees, and warning on every load for a value
+they may have set deliberately is noise. `ArtificeConfigTest` (5 cases) reads a hostile configuration (0, negatives,
+inverted ranges) and asserts the invariants, reads a default one and asserts the documented defaults, and reads twice
+to prove the clamps do not accumulate. Against unclamped code, the divisor test fails with 0.
+
+The battery's missing charging path (§5.27) is untouched - see there.
+
 Also: the battery has **no charging path** — `updateEntity` only ever extracts. The only energy it will ever hold
 is the `charge` NBT stamped on the crafted item (§5.27). Worth deciding whether that is intended.
 
@@ -838,6 +853,17 @@ static int rollsThisChunk(Random rand, int frequency) {
 ```
 
 Bonus: this becomes a pure, unit-testable function — exactly the kind of thing the new JUnit suite should own.
+
+**Status: done on `refactor/1.1.6`.** `world/GenFrequency.rollsThisChunk(rand, frequency)` is now the only copy;
+the eight generators call it. `GenFrequencyTest` pins the contract: 0 and negatives place nothing, 100 is exactly
+one per chunk, below 100 is the chance of one (1%, 25%, 50%, 99%), above 100 scales linearly (150 → 1.5,
+1550 → 15.5), 1500 is exactly 15 and 1900 exactly 19 (the saturation the review described), the whole part is
+always present and never exceeded, and the function is seed-deterministic.
+
+One correction to the numbers above: `1500 % 1000 == 500` made the old extra-roll branch always true, so 1500
+produced 16 - and the "intended" 15.5 does not apply to it either, because `1500 / 100` is exactly 15. The
+half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
+"Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
 
 ### 7.3 Registry names as constants
 
