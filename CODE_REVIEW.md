@@ -5,7 +5,8 @@
 | **Repository** | `MrFuzzihead/Artifice-Legacy` |
 | **Reviewed commit** | `616bb9e` (Initial decompilation build: namespace refactor, spotless, cofhCore dep) |
 | **Scope** | 145 Java files / ~17,600 lines, 1.7.10 Forge, GTNH RetroFuturaGradle buildchain, CoFHCore required |
-| **Companion PR** | #2 `feature/test-harness` — JUnit/Mockito/JaCoCo + in-game game-test mod (this document is `docs/code-review`) |
+| **Companion PRs** | #2 `feature/test-harness` — JUnit/Mockito/JaCoCo + in-game game-test mod. #3 `docs/code-review` — this document. Both merged into `main` at `762f04e`. |
+| **Follow-up branch** | `refactor/1.1.6` — the release branch for the work below, including the downstream audit in **Appendix E** |
 
 ---
 
@@ -37,6 +38,18 @@
 | 22 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
+
+### 0.1 Pack follow-ups
+
+These come from the downstream audit of the real pack (`FuzzCraft-Legacy`, 233 mod jars) in **Appendix E**. They
+are not codebase defects, but they decide whether the migration boots at all.
+
+| # | Item | Kind | Priority |
+|---|---|---|---|
+| P1 | **FuzziTweaks 1.2.0 hard-links `shukaro.artifice` from a Mixin.** Its `ArtificeEnchantsMixin` targets `shukaro.artifice.ArtificeEnchants` and reads `ArtificeConfig` / `ArtificeCore` fields. The target is gated on the *mod id* `Artifice`, which the rename does not change, so the mixin is still queued and then fails → **startup crash**. Must be dropped in the same release (§3.2, Appendix E.3) | pack | **P0** |
+| P2 | Port FuzziTweaks' enchant-id allocation in-tree **first**, preserving ids 70/71/72, or dropping the mixin silently re-collapses the three enchantments onto one id (§5.3) | code | **P0** |
+| P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
+| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (§4.2.1) | pack / upstream | P3 |
 
 ---
 
@@ -109,9 +122,10 @@ that matters: no world migration is needed for (a).
 |---|---|---|
 | **Compile-time API break** | `shukaro.artifice.ArtificeRegistry` is a public, documented-by-usage entry point (`registerMarbleType`, `registerBasaltType`, `registerStoneType`, `registerDimensionBlacklist`, `registerWorldTypeBlacklist`, `registerTooltip`). Any addon that compiled against `shukaro.artifice.*` gets `NoClassDefFoundError` at load, not a graceful skip. | High if such addons exist |
 | **AE2 spatial whitelist** | `compat/AE2.java` sends four `whitelist-spatial` IMC messages whose *values are class names* (`com.mrfuzzihead.artifice.tile.TileEntityAttuned`, …). AE2 resolves them by class name. Old entries persisted from a previous version (`shukaro.artifice.tile.…`) will fail to resolve; AE2 logs and skips them. Re-sent on every load with the new names, so new worlds are correct, but a pre-existing AE2 config may keep stale `shukaro` strings forever. | Low, cosmetic |
-| **Reflection from other mods** | Nothing in this repo reflects into `shukaro.*`, but a pack addon could (`Class.forName("shukaro.artifice.ArtificeRegistry")`). Unknown until the pack scan. | Unknown |
+| **Reflection from other mods** | Nothing in this repo reflects into `shukaro.*`. The pack scan (Appendix E) found exactly one consumer, and it is not reflection: **FuzziTweaks 1.2.0** links the old package directly from a Mixin (`@Mixin(value = shukaro.artifice.ArtificeEnchants.class)`, `@Overwrite initEnchants()`, plus `ArtificeConfig` / `ArtificeCore` field refs). It crashes on startup against the renamed build. | **Critical — must be fixed with the release** |
+| **Angelica** | `blockCrackFixRenderPassWhitelist` defaults to a list of block **class names**, including `shukaro.artifice.block.world.BlockOre`. Resolved by string, so the entry silently stops matching after the rename. Cosmetic (z-fighting on ores) and fixable in config, but the *default* lives in Angelica's jar, so a fresh instance regresses. | Low, and it recurs on reinstall |
 | **ForgeMultipart / BuildCraft / MFR / Forestry / Carpenters / EE3 interop** | All of these are ItemStack-, string- or reflection-based and reference *their own* classes, not ours. Unaffected. | None |
-| **Tile entities** | `ArtificeTiles` registers `"tileArtificeAttuned"` etc. Tile-entity ids are **not** namespaced and are **not** class names in 1.7.10, so chunk data loads unchanged. | None |
+| **Tile entities** | `ArtificeTiles` registers `"tileArtificeAttuned"` etc. Tile-entity ids are **not** namespaced and are **not** class names in 1.7.10, so chunk data loads unchanged. Verified against the pack's own save: 414 region files, zero `shukaro` strings (§E.5). | None |
 | **`mcmod.info` / `authorList`** | Already lists `MrFuzzihead` and `Shukaro`. Fine. | None |
 
 ### 3.3 Recommendation
@@ -119,15 +133,16 @@ that matters: no world migration is needed for (a).
 1. **Do nothing to existing worlds.** There is nothing to migrate.
 2. **Treat `ArtificeRegistry` as an API.** Right now it lives in the root package and is `public abstract` with
    static helpers. If anything in your pack calls it, move it to `com.mrfuzzihead.artifice.api.ArtificeRegistry`
-   *and* keep a deprecated `shukaro.artifice.ArtificeRegistry` subclass for one release. If nothing calls it
-   (the pack scan will tell you), leave it where it is and stop calling it "API".
-3. **Add a pack scan before release** (commands in Appendix C). The patterns that matter:
-   `shukaro`, `shukaro.artifice`, `ArtificeRegistry`, `registerMarbleType`, `registerBasaltType`,
-   `registerStoneType`, and (from §4) `Loader.isModLoaded("Artifice")`, `required-after:Artifice`,
-   `FMLInterModComms.sendMessage("Artifice"`.
+   *and* keep a deprecated `shukaro.artifice.ArtificeRegistry` subclass for one release. The pack scan says
+   **nothing calls it** — leave it where it is and stop calling it "API" (Appendix E).
+3. **The pack scan is done** (Appendix C commands, results in Appendix E). Among 233 jars, four mention
+   `shukaro`, and only one is about this mod: FuzziTweaks 1.2.0, which is a **hard break** and is covered in
+   §0.1 / E.3. NodalMechanics (`shukaro.nodalmechanics`) and `gtnh-web-map` (`shukaro.warptheory`) are the same
+   author in different packages and are irrelevant.
 4. **Do not rename the CoFH worldgen feature names.** They are hashed into every chunk (`WorldHandler.genHash`)
-   to drive retrogen. A rename would look like "the pack changed its worldgen" and can trigger a full retrogen.
-   They do not contain the package, so this is purely a "don't touch" note for later cleanup.
+   to drive retrogen. Measured on the real save: 11 distinct `Artifice:<registryName> <feature>` strings, 3.36M
+   occurrences across 414 region files (E.5). The hash contains the **mod id, the registry name and the feature
+   name**, so §4's registry rename is not merely cosmetic — see §4.2.1.
 
 ---
 
@@ -191,6 +206,38 @@ Two hard constraints when you do this:
 2. **Do not pass a name that already has a prefix.** `GameData.registerBlock` logs
    `bigWarning("Illegal extra prefix …")` when the name already contains `:` (and then keeps the old prefix).
    Keep passing bare names; `addPrefix` adds the domain.
+
+### 4.2.1 What these names cost in a real pack
+
+Two measured effects, both from `FuzzCraft-Legacy` (Appendix E).
+
+**(a) Third-party tables hard-code the ugly form — and some are already broken.** Chisel's compat table
+(`team/chisel/compat/Compatibility.java`) does:
+
+```java
+addSupport("Artifice", "artifice.marble",      "marble",      0, 99);
+addSupport("Artifice", "artifice.marble.slab", "marble_slab", 0, 99);
+for (String color : ROCK_COLORS)
+    addSupport("Artifice", "artifice.limestone." + color, "limestone", 0, 99);
+```
+
+`addSupport(modid, registryName, group, meta, order)` resolves through `GameRegistry.findBlock(modid, registryName)`,
+which is an exact `modId + ":" + name` lookup. Artifice registers `Artifice:tile.artifice.marble`, so
+`findBlock("Artifice", "artifice.marble")` returns null and every one of those calls returns early. The
+integration has therefore **never worked** — confirmed against the AE2-generated `items.csv`, which contains 383
+`Artifice:` entries and not one plain `Artifice:marble`. Normalising the registry names in §4 will not fix this
+(the lookup still misses); see E.4 for the three-line repair.
+
+The lesson for the rename: `tile.`-prefixed registry names are unusual, third-party tables that were written
+against them get them wrong, and nobody notices because failure is silent. Normalising is a **compat improvement**,
+not just tidying.
+
+**(b) The names are hashed into every chunk.** CoFHCore's retrogen stores a per-chunk hash list in the save as
+`Artifice:<registryName> <featureName>`, e.g. `Artifice: tile.artifice.marble@0 Clusters`. The mod id, the
+registry name **and** the feature name are all in the string, so renaming any of the three makes CoFH treat the
+feature as new for every existing chunk and re-run it — duplicate ore clusters and lakes in already-generated
+terrain. Renaming the package does not touch it; renaming the registry names does. Measured on the real save:
+11 distinct strings, 3,358,850 occurrences over 414 region files (E.5).
 
 ### 4.3 The migration mechanism (this is the part that must be right)
 
@@ -286,6 +333,21 @@ if (legacy.isFile() && !current.isFile()) {
 Ids are persisted as NBT shorts on items, and default to the 70..255 range from `enchantmentStartID`. Nothing
 about the rename changes them, but the *config regeneration* in 4.4 would. Keep 4.4, and consider documenting the
 recommended range in the config comment.
+
+The ids are **observable in the pack**, and they are not a free knob. `config/fuzziids/enchantments.csv` (a dump by
+FuzziIDs, not a pin file — see E.6) records this pack's actual allocation:
+
+```
+70,enchantment.artifice.invisible,Artifice,shukaro.artifice.enchant.EnchantmentInvisible
+71,enchantment.artifice.soulstealing,Artifice,shukaro.artifice.enchant.EnchantmentSoulstealing
+72,enchantment.artifice.resistance,Artifice,shukaro.artifice.enchant.EnchantmentResistance
+```
+
+Those are the ids already on every enchanted item in existing worlds. Changing the registration *order*, the
+*start* id or the collision strategy remaps them — a `Resistance` book becomes an `Invisible` book with no
+warning, because 1.7.10 stores the number, not the name. The risk is not theoretical here: it is exactly what
+FuzziTweaks currently patches (`@Overwrite initEnchants()`), so the in-tree fix in §5.3 has to reproduce 70/71/72
+before that mixin can be deleted.
 
 Also note §5.3: if the range is exhausted the enchantments stay `null` and the mod NPEs. A large pack is exactly
 where both problems meet.
@@ -430,6 +492,49 @@ A GTNH-sized pack is exactly where the 70..255 window runs out (many mods use th
 field for null at each use site, or fail loudly once at registration and disable the feature (not just log a
 warning). `ArtificeCreativeTab` is already only guarded by `ArtificeConfig.*Enable`, which is a *different*
 condition from "registration succeeded".
+
+**There is a second, worse failure mode, and this pack hits it.** The loop's *only* collision test is the
+`IllegalArgumentException` that vanilla's `Enchantment(int, int, EnumEnchantmentType)` constructor throws on a
+duplicate id — it catches that and retries the next id. Mods that replace the enchantment store (EndlessIDs, which
+is in this pack, and similar conflict detectors) relocate duplicates instead of throwing, so the constructor stops
+being a collision signal. Each of the three loops then succeeds on its **first** try and all three enchantments
+land on id 70. The fields stay non-null, so the NPEs above do not fire; instead the three effects silently become
+one, and anything enchanted afterwards gets the wrong effect.
+
+So the fix is not only null guards — the allocation must stop relying on the constructor:
+
+```java
+public static void initEnchants() {
+    final boolean[] used = new boolean[Enchantment.enchantmentsList.length];
+    if (ArtificeConfig.enchantmentInvisibleEnable) {
+        int id = findFreeEnchantID(ArtificeConfig.enchantmentStartID, used);
+        if (id < 0) {
+            ArtificeCore.logger.warn("No available enchantment IDs for invisible enchant!");
+        } else {
+            used[id] = true;
+            enchantmentInvisible = new EnchantmentInvisible(id, ArtificeConfig.enchantmentInvisibleWeight);
+            ArtificeCore.logger.info("Registered invisible enchant to ID " + id);
+        }
+    }
+    // soulstealing, then resistance - same shape, same order
+}
+
+/** First id at or above {@code start} that is neither registered nor claimed earlier in this pass. */
+private static int findFreeEnchantID(int start, boolean[] used) {
+    int id = Math.max(0, start);
+    while (id < used.length && (Enchantment.enchantmentsList[id] != null || used[id])) id++;
+    return id < used.length ? id : -1;
+}
+```
+
+`used.length` rather than a literal 256, because EndlessIDs grows the array. Keep the order invisible ->
+soulstealing -> resistance and the start id, and this reproduces ids 70/71/72 exactly — which is what this pack's
+worlds already contain (§4.5). **Acceptance test:** the game-test mod asserts the three ids are 70/71/72 under the
+stock config, so a reorder fails CI instead of a save.
+
+This exact logic currently ships as a third-party Mixin (`FuzziTweaks`,
+`ArtificeEnchantsMixin#fuzziTweaks$findFreeEnchantID`) because it was the only way to patch a released mod. Moving
+it in-tree is what lets that mixin be deleted — which the namespace migration requires anyway (§0.1, E.3).
 
 ### 5.4 `MiscUtils` neighbour helpers visit a permuted subset of the six sides — **P1**
 
@@ -1029,6 +1134,19 @@ fluids Artifice did not create.
   makes retro-generation cheap to add.
 * **The creative tab is not localised** (§5.11) and the lang file already has the keys.
 
+### 9.9 Consumers of the odd registry names: Chisel (and the general lesson)
+
+`tile.`-prefixed registry names are unusual, and third-party tables written against them get them wrong. Chisel's
+carving table is the worked example: it asks for `Artifice:artifice.marble`, which has never existed, so its
+marble/limestone integration has silently done nothing in every pack that has both mods (§4.2.1(a), E.4). Nobody
+reported it because the failure is a null `findBlock` and an early return.
+
+Two takeaways:
+
+* Normalising the names in §4 is a **compat improvement**, not cosmetics.
+* If Chisel support is wanted before then, it is cheaper to register the carving groups from our side, where the
+  real names are known, than to wait for another repo. Sketched in E.4.
+
 ---
 
 ## 10. Test strategy and coverage analysis
@@ -1176,6 +1294,12 @@ Interpretation:
 * **Hits for `Artifice` as a dependency/IMC address** → use Option B in §4.7 (the shim container), or accept the
   break and coordinate the dependent mod's update in the same pack revision.
 
+**This scan has been run** against `FuzzCraft-Legacy` (233 jars, 574 MB) and the results are in Appendix E. The
+shell snippets above are the quick version; `tools/scan_legacy_refs.py` and `tools/scan_registry_refs.py` in this
+repo are the version that was actually used (they walk the constant pool of every class, skip binary assets,
+recurse into embedded jars, and separate *type* references from *string* references). Re-run them before any
+release that touches names.
+
 ## Appendix D — File reference index
 
 | Finding | File:line |
@@ -1186,6 +1310,11 @@ Interpretation:
 | §5.1 hash/equals | `util/NameMetaPair.java:78, 105` |
 | §5.2 sledge dispenser | `item/DispenserBehaviorSledge.java:25-29` |
 | §5.3 enchant nulls | `ArtificeEnchants.java:15-55`; `event/ArtificeEventHandler.java:24, 46`; `gui/ArtificeCreativeTab.java:39+` |
+| §5.3 enchant allocation (ported fix) | `ArtificeEnchants.java:15-55`; reference implementation: `fuzzitweaks-1.2.0.jar!.../ArtificeEnchantsMixin#fuzziTweaks$findFreeEnchantID` |
+| §E.3 FuzziTweaks mixin | `fuzzitweaks-1.2.0.jar!com/mrfuzzihead/fuzzitweaks/mixins/late/artifice/ArtificeEnchantsMixin.class`, `mixins/Mixins.class`, `mixins/TargetMods.class`, `mixins.fuzzitweaks.late.json` |
+| §E.4 Chisel table | `chisel-2.18.1-GTNH.jar!team/chisel/compat/Compatibility.class` (`init`, `addSupport(String,String,String,int,int)`); API: `com/cricketcraft/chisel/api/carving/Carving.addVariation` |
+| §E.5 Angelica default | `angelica-2.2.46.jar!com/gtnewhorizons/angelica/config/AngelicaConfig.class`; live value at `config/angelica-modules.cfg:51` |
+| §E.7 config keys | `config/ProjectE/custom_emc.cfg:22`, `config/RTG/rtg.cfg:435,443`, `config/mystcraft/symbols.cfg:242`, `config/AppliedEnergistics2/recipes/items.csv`, `config/UniDict.cfg.BACKUP:169` |
 | §5.4 neighbour double index | `util/MiscUtils.java:69, 91` |
 | §5.5 flood fill | `util/MiscUtils.java:103-134` |
 | §5.6 generator leak | `event/ArtificeTickHandler.java:44-70`; `WorldGen{Cave,Cluster,Desert,Sulfur}.java` `getChunksToGen` |
@@ -1221,3 +1350,237 @@ Interpretation:
 | §8 volcano dead | `world/WorldGenVolcano.java`, `world/VolcanoHelper.java`; `ArtificeWorld.java` (no reference); `ArtificeConfig.java:82, 197` |
 | §9.1 ore rewrite | `ArtificeBlocks.java:264-290`; `WorldGenCluster.java:190-235` |
 | §9.2 ore smelting | `recipe/ArtificeRecipes.java:838-860`; `ArtificeBlocks.java:278-290`; `ArtificeCore.java:115-131` |
+
+---
+
+## Appendix E — Downstream consumer audit: FuzzCraft-Legacy (2026-11-17)
+
+The §3.3 action item was "run a pack scan before release". This is the result, and it changes the release plan:
+the package rename is **not** a no-op for this pack.
+
+### E.1 Scope and method
+
+| Input | Size | Result |
+|---|---|---|
+| `mods/*.jar` | 233 jars, 574 MB | 4 jars mention `shukaro`, 1 is a hard dependency |
+| `coremods/`, `nestedmods/` | empty | — |
+| `config/**`, `scripts/*.zs` | 9 script files, ~1,400 config files | 10 config files reference Artifice; 0 scripts |
+| `saves/Test World` | 414 region files | 0 `shukaro` strings; 3.36M CoFH hash strings |
+
+Two passes, both scripts are in `tools/`:
+
+1. **`scan_legacy_refs.py`** — raw byte scan of every non-binary entry for `shukaro`. Matches are classified:
+   `Lshukaro/artifice/...` / `shukaro/artifice/...` in a class file is a **type reference** in the constant pool —
+   a hard link that fails at load. Everything else is a **string** — soft, and only as good as the code that
+   consumes it (reflection, a config key, a class-name list).
+2. **`scan_registry_refs.py`** — every `artifice:`-shaped token and every `Artifice` word, classified as
+   *registry name*, *Forge dependency string*, or *prose*.
+
+Both skip image/audio assets and recurse into embedded jars. The limitation to keep in mind: a byte scan cannot see
+a name assembled at runtime from fragments, and cannot see the *intent* behind a string. Everything below was
+resolved by disassembling the class in question.
+
+### E.2 Results
+
+| Jar | Kind | Reference | Verdict |
+|---|---|---|---|
+| `fuzzitweaks-1.2.0.jar` | **type** | `@Mixin(shukaro.artifice.ArtificeEnchants)`, `@Overwrite initEnchants()`, `ArtificeConfig.*`, `ArtificeCore.logger` | **P0 — startup crash** (E.3) |
+| `angelica-2.2.46.jar` | string | `"shukaro.artifice.block.world.BlockOre"` in a config default | P3 — cosmetic (E.5) |
+| `NodalMechanics-1.3.4-GTNH.jar` | type | `shukaro/nodalmechanics/**` — same author, different mod | none (E.6) |
+| `gtnh-web-map-0.4-beta-1.jar` | string | `shukaro.warptheory.block.BlockVanish` | none (E.6) |
+
+Zero mod jars reference `Artifice` as a Forge dependency, IMC address, network channel or mod-container name. Zero
+reference `ArtificeRegistry` or any of its `register*Type` entry points — so §3.3's "treat it as API" question is
+answered: **nobody calls it**.
+
+### E.3 FuzziTweaks 1.2.0 — the one hard break
+
+Decompiled from `fuzzitweaks-1.2.0.jar`:
+
+```java
+// mixins/TargetMods.class
+ARTIFICE = new TargetMods("Artifice");              // gate: the MOD ID
+
+// mixins/Mixins.class
+MixinBuilder.addCommonMixins("artifice.ArtificeEnchantsMixin")
+            .addRequiredMod(TargetMods.ARTIFICE)
+            .setApplyIf(() -> Config.enableArtificeEnchantIdFix);
+
+// mixins/late/artifice/ArtificeEnchantsMixin.class
+@Mixin(value = shukaro.artifice.ArtificeEnchants.class, remap = false)
+    @Overwrite initEnchants()V
+    // body reads shukaro.artifice.ArtificeConfig.enchantmentInvisibleEnable / enchantmentStartID
+    // and shukaro.artifice.ArtificeCore.logger
+
+// mixins.fuzzitweaks.late.json
+"required": true
+```
+
+The gate is the **mod id**, which the package rename deliberately does not change, so the mixin is still queued
+against the renamed build and then:
+
+1. Mixin resolves `shukaro.artifice.ArtificeEnchants` → missing → `InvalidMixinException` at load. `required: true`
+   makes it fatal.
+2. Even if that were tolerated, the `@Overwrite` body links `ArtificeConfig` and `ArtificeCore` by name, so it
+   throws `NoSuchFieldError` the first time `initEnchants()` runs.
+
+There is no bridge-class escape: the overwrite touches statics on two other renamed classes, so a deprecated
+`shukaro.artifice.ArtificeEnchants` subclass would not be enough. The mixin must be deleted, which means the
+allocation logic has to exist in-tree first (§5.3) and keep ids 70/71/72 (§4.5).
+
+Change list (FuzziTweaks repo):
+
+- delete `mixins/late/artifice/ArtificeEnchantsMixin.java`;
+- drop the `MixinBuilder` entry above and the now-unused `TargetMods.ARTIFICE`;
+- drop `Config.enableArtificeEnchantIdFix` (Forge leaves the stale key behind, harmless);
+- add `required-after:Artifice@<first version with the in-tree fix>` to `mcmod.info`.
+
+### E.4 Chisel 2.18.1-GTNH — an integration that never worked
+
+`team/chisel/compat/Compatibility.init()`:
+
+```java
+addSupport("Artifice", "artifice.marble",      "marble",      0, 99);
+addSupport("Artifice", "artifice.marble.slab", "marble_slab", 0, 99);
+for (String color : new String[]{"gray","lightgray","brown","tan","reddish","bluish","greenish"})
+    addSupport("Artifice", "artifice.limestone." + color, "limestone", 0, 99);
+```
+
+and the helper:
+
+```java
+public static void addSupport(String modid, String registryName, String group, int meta, int order) {
+    if (!Loader.isModLoaded(modid)) return;
+    if (GameRegistry.findBlock(modid, registryName) == null) return;      // <-- always null here
+    Carving.chisel.addVariation(group, GameRegistry.findBlock(modid, registryName), meta, order);
+}
+```
+
+`findBlock` is an exact `modId + ":" + name` lookup and Artifice registers `Artifice:tile.artifice.*`, so the
+`tile.`-less name never resolves and all eight calls return early. This is not a migration regression — it is
+current behaviour, and the reason no one noticed.
+
+The three names, corrected:
+
+```
+artifice.marble              -> tile.artifice.marble
+artifice.marble.slab         -> tile.artifice.marble.slab
+artifice.limestone.<colour>  -> tile.artifice.limestone.<colour>
+```
+
+Both sides use the same seven colour names in the same order (`ArtificeBlocks.rockColorNames:101`), and the
+trailing `99` is `order`, not a metadata range (it lands in `SimpleCarvingVariation(block, meta, order)`), so there
+is no invalid-meta hazard. All seven limestones deliberately share one `"limestone"` group so the colours swap
+into each other.
+
+Where to fix it, in order of preference:
+
+1. **Here** — a `ChiselCompat` class called from `postInit` behind `Loader.isModLoaded("chisel")`, calling
+   `Carving.chisel.addVariation(...)` directly (`compileOnly` on the Chisel API). This knows the real names and
+   can also register basalt, which Chisel never did. It also stops depending on someone else's string table.
+2. **Chisel** — the three literals above; correct, but a second repo and a second release.
+3. **Nothing** — status quo; the rename costs nothing either way.
+
+### E.5 Angelica 2.2.46 — a class name baked into a config default
+
+```java
+// com/gtnewhorizons/angelica/config/AngelicaConfig.class
+"blockCrackFixRenderPassWhitelist"  // "Add a block class here if you see flickering (z-fighting) with blockCrackFix"
+  defaults: gregtech.common.blocks.BlockOres, gregtech.common.blocks.GTBlockOre,
+            shukaro.artifice.block.world.BlockOre,        <-- this
+            bartworks.system.material.BWMetaGeneratedOres, gtPlusPlus.core.block.base.BlockBaseOre, ...
+```
+
+Matched by class-name string, so after the rename the entry stops matching and Artifice ores lose the render-pass
+whitelist (z-fighting when `blockCrackFix` is on). Cosmetic, no crash, no data.
+
+Already materialised in this instance at `config/angelica-modules.cfg:51`. Edit that line:
+
+```
+shukaro.artifice.block.world.BlockOre   ->   com.mrfuzzihead.artifice.block.world.BlockOre
+```
+
+Because the *default* lives in Angelica's jar, a fresh instance will regress. Worth a one-line upstream PR that
+lists both class names.
+
+### E.6 Not a consumer (and how to tell)
+
+| Hit | Why it is not us |
+|---|---|
+| `NodalMechanics-1.3.4-GTNH` — 57 hits | `shukaro/nodalmechanics/**`, Shukaro's other mod. Same author, different package. |
+| `gtnh-web-map` — 1 hit | `renderdata/WarpTheory-texture.txt` → `shukaro.warptheory.block.BlockVanish`. Also `renderdata/1.6.2/Artifice-*.txt`, a 1.6.2 leftover in `deleted.txt`. |
+| `Thaumcraft`, `salisarcana`, `tc4tweak` | Thaumcraft's own research category `ARTIFICE`, nothing to do with us. |
+| `buildcraft-7.2.1` | a changelog line. |
+| `coretweaks/cache/jarDiscoverer.cache` | a cached jar listing, regenerated. |
+| `config/fuzziids/*.csv` | **output**, not configuration. FuzziIDs only writes these (`IdDumpManager` → `CsvWriter`; there is no reader class), so the `shukaro.artifice.enchant.*` strings in `enchantments.csv` are a report and are regenerated. It is still the best record of the pack's live enchantment ids (70/71/72, §4.5). |
+
+### E.7 Config surface: what each rename actually breaks
+
+| File | Key form | Package rename | Mod-id / registry rename |
+|---|---|---|---|
+| `config/AppliedEnergistics2/recipes/items.csv` | `Artifice:tile.artifice.basalt:0` — `modid:registryName:meta`, **generated** | safe | regenerated; old facades are re-derived from the same names |
+| `config/AppliedEnergistics2/Facades.cfg` | `tileartificebasalt.1` — unlocalised name, dots stripped | safe | breaks if unlocalised names change |
+| `config/ProjectE/custom_emc.cfg:22` | `S:Artifice:tile.artifice.marble` | safe | needs editing |
+| `config/RTG/rtg.cfg:435,443` | `Artifice:tile.artifice.basalt` (volcano block) | safe | needs editing |
+| `config/mystcraft/symbols.cfg:242` | `modmat_tile.artifice.fluid.bitumen.enabled` | safe | needs editing |
+| `config/UniDict.cfg.BACKUP:169` | `Artifice` in a mod-id list | safe | needs editing (cosmetic) |
+| `config/fuzzitweaks.cfg:32` | `EnableArtificeEnchantIdFix` | safe | goes away with the mixin |
+| `config/angelica-modules.cfg:51` | class name | **breaks (cosmetic)** | safe |
+
+All of these are `modid:registryName` or `modid:unlocalisedName`, and both components survive the package rename —
+the mod id is unchanged and every block/item is still registered from `getUnlocalizedName()`. They are, however,
+exactly the surface that makes §4's registry rename expensive: each one has to be edited or re-keyed, on top of
+the CoFH hash problem below.
+
+### E.8 World data: what a save actually contains
+
+Every chunk of `saves/Test World` decompressed (414 region files, all dimensions):
+
+| Lookup | Occurrences | Meaning |
+|---|---|---|
+| `shukaro` | **0** | No class names are persisted. Nothing to migrate, and a package rename cannot corrupt this world. |
+| `tileArtifice*` | **0** | No Artifice tile entities happen to be placed in it — and the ids are stable strings anyway. |
+| `Artifice:` | **3,358,850** | CoFHCore retrogen hash strings, in `CoFHWorld → Hash → List`. |
+
+The hash list is per chunk and reads `Artifice:<registryName> <featureName>`:
+
+```
+Artifice: tile.artifice.sulfur@0 Lava Deposits        (334,748 chunks)
+Artifice: tile.artifice.niter@0 Desert Deposits       (334,748)
+Artifice: tile.artifice.uranium@0 Clusters            (334,748)
+Artifice: tile.artifice.enderore@0 Clusters           (334,748)
+Artifice: tile.artifice.basalt@0 Layers               (334,748)
+Artifice: tile.artifice.marble@0 Clusters             (334,748)
+Artifice: tile.artifice.limestone.gray@0 Clusters     (334,748)
+Artifice: tile.artifice.limestone.gray@0 Caves        (334,748)
+Artifice: Flowers                                     (334,748)
+Artifice: Lilies                                      (334,748)
+Artifice: tile.blockOil Lakes                         (11,370)   <- stale, from an older Artifice
+```
+
+Eleven distinct strings, with the **mod id, the registry name and the feature name all inside them**. CoFH treats a
+changed hash as "this feature is new for this chunk", so renaming any of the three re-runs that feature over
+already-generated terrain — duplicate ore clusters, duplicate lakes. This is the concrete form of the "don't rename
+the worldgen hash" warning in §3.3 and §4.2.1(b).
+
+Tile entities are the good news: `ArtificeTiles` registers plain ids (`tileArtificeAttuned`,
+`tileArtificeLogic`, `tileArtificeRadioBattery`, `tileArtificeHeatingCoil`), and 1.7.10 stores the registered id,
+not the class name. Chunk data therefore survives the package rename untouched, and a future id change would at
+least be recoverable by registering both ids.
+
+### E.9 Verdict
+
+| Migration | Safe in this pack? |
+|---|---|
+| **Package** `shukaro.artifice` → `com.mrfuzzihead.artifice` | **Yes, after two edits** — FuzziTweaks must lose its mixin (§5.3 first) and one Angelica config line changes. Worlds, configs and every other mod are unaffected. |
+| **Registry names / mod id** (§4) | **No, not in one step** — the CoFH hash strings and the config surface in E.7 both say so. That is why §4 already proposes a release of its own, with `missingMappings` and a legacy-name layer. |
+| **Enchantment ids** | Unchanged by either rename, but *only* if the in-tree fix reproduces 70/71/72. |
+
+Order of work, which is what `refactor/1.1.6` exists for:
+
+1. §5.3 in-tree enchant fix, plus a game-test assertion on ids 70/71/72.
+2. FuzziTweaks: drop the mixin, require the new Artifice.
+3. `config/angelica-modules.cfg:51`, and optionally an Angelica PR listing both class names.
+4. Optional: `ChiselCompat` (§E.4, option 1).
+5. §4 (mod id + registry names) only as a separate release with the `missingMappings` machinery — not as part of
+   the package cleanup.
