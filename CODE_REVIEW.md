@@ -14,13 +14,13 @@
 
 | # | Item | Kind | Priority |
 |---|---|---|---|
-| 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **now** |
-| 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | **P0** |
-| 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | **P1** |
+| 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **done** |
+| 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | ~~P0~~ done |
+| 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | ~~P1~~ done |
 | 4 | ~~`MiscUtils` neighbour helpers double-index the side array~~ - **retracted**: the double index is a permutation either way, so nothing was ever skipped (§5.4). Cleaned up for readability only | not a defect | ~~P1~~ |
-| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | **P1** |
-| 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | **P1** |
-| 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | **P1** |
+| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done |
+| 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | ~~P1~~ done |
+| 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | ~~P1~~ done |
 | 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
 | 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
 | 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
