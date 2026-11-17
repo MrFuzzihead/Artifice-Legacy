@@ -1,0 +1,24 @@
+{
+	"modListVersion": 2,
+	"modList": [{
+		"modid": "${modId}",
+		"name": "${modName}",
+		"description": "TODO: Update me",
+		"version": "${modVersion}",
+		"mcversion": "${minecraftVersion}",
+		"url": "https://github.com/MrFuzzihead/Artifice-Legacy",
+		"updateUrl": "https://github.com/MrFuzzihead/Artifice-Legacy/releases/latest",
+		"authorList": [
+			"MrFuzzihead",
+			"Shukaro"
+		],
+		"credits": "",
+		"logoFile": "",
+		"screenshots": [],
+		"parent": "",
+		"requiredMods": [],
+		"dependencies": [],
+		"dependants": [],
+		"useDependencyInformation": false
+	}]
+}
