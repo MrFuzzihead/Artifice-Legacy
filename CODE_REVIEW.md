@@ -32,8 +32,10 @@
 | 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
 | 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
 | 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
-| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
-| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
+| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | ~~P3~~ done |
+| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
+| 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
+| 22 | `MiscUtils`' neighbour helpers allocated a boxed array and took a lock per call (§6.2) | perf | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -932,17 +934,51 @@ client run to confirm nothing else subscribed.
 
 ## 6. Performance
 
-| Location | Issue | Fix |
-|---|---|---|
-| `event/Tracking.java:16-38` | `getHighestFrequencyPower` scans **every loaded tile entity of every world** for every attuned block, every tick (`TileEntityAttuned.updateEntity`). With N attuned blocks and M tile entities this is O(N·M) per tick. | Maintain a `Map<String, Set<TileEntityAttuned>>` (or a per-frequency max-power cache invalidated on change) in `Tracking`. |
-| `event/ArtificeTickHandler.java:50-70` | Unbounded growth (see 5.6) plus an O(deque) scan every 5 ticks that never shrinks. | Track completion; remove on empty. |
-| `item/ItemSledge.java:179-186` | Every block break scans the entire `CraftingManager` recipe list (thousands of entries in a GTNH pack) and compares unlocalised names. | Pre-index `Map<Item, List<IRecipe>>` on `FMLPostInitializationEvent`, or cache per `(item, meta)`. |
-| `block/frame/BlockFrameScaffold.java:205-225` | `isRooted` walks from `y-1` to 0 (up to 256 `getBlock` calls) on every neighbour change; `checkStay` then calls `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower is O(height · r³ · n²). | Walk the support chain once with a visited set; cap the radius search; replace the `LinkedList` flood fill with an `ArrayDeque` + `HashSet`. |
-| `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. |
-| `world/WorldGenLayer.java:36-90` | Scans the full 16×16×height band and does two `NameMetaPair` hash lookups per block. At the default basalt layer (0–10) that is ~2.8k blocks/chunk; if a user configures a tall layer it is 65k. | Skip blocks that are air first, and use a single `getBlock`+`getBlockMetadata` pair (already done) but early-out on `isAirBlock` before building the pair. |
-| `util/MiscUtils.java:63-98` | Called per coil/battery per tick; builds and shuffles a 6-element `Integer[]` each call (two allocations + boxing). | Use a static `int[]` rotated by a random start index instead of shuffle+boxing. |
-| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. |
-| `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path; leave alone, but see §7. |
+Status key: **done** = fixed on `refactor/1.1.6` / `perf/hot-paths`; **open** = still there; **left** = deliberately
+not changed.
+
+| Location | Issue | Fix | Status |
+|---|---|---|---|
+| `event/Tracking.java` | `getHighestFrequencyPower` scanned **every loaded tile entity of every world** for every attuned block, every tick (`TileEntityAttuned.updateEntity`). With N attuned blocks and M tile entities this was O(N·M) per tick. `BlockAttunedRedstone.onNeighborBlockChange` paid the same price on every redstone update. | Maintain a `Map<String, Set<TileEntityAttuned>>` in `Tracking`. | **done** |
+| `event/ArtificeTickHandler.java:50-70` | Unbounded growth (see 5.6) plus an O(deque) scan every 5 ticks that never shrinks. | Track completion; remove on empty. | **done** (5.6) |
+| `item/ItemSledge.java` | Every block break scanned the entire `CraftingManager` recipe list (thousands of entries in a GTNH pack). | Index shaped recipes by output item. | **done** |
+| `world/WorldGenLayer.java` | Built the same `NameMetaPair` twice per block (four world reads, two registry lookups on a hit) and did it for air too. | Read the block once, skip air. | **done** |
+| `util/MiscUtils.java:63-98` | Called per coil/battery per tick; built and shuffled a 6-element `Integer[]` each call (two allocations, six boxes) through `Math.random()`, which is one shared `Random` behind a lock. | Static `int[]` rotated by a random start. | **done, differently - see below** |
+| `block/frame/BlockFrameScaffold.java:205-225` | `isRooted` walks from `y-1` to 0 (up to 256 `getBlock` calls) on every neighbour change; `checkStay` then calls `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower is O(height · r³ · n²). | Walk the support chain once with a visited set; cap the radius search; replace the `LinkedList` flood fill with an `ArrayDeque` + `HashSet`. | open |
+| `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. | left (client-side) |
+| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. | left |
+| `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path, but see §7. | left (client-side) |
+
+### 6.1 Tracking: an index of tiles, not a cache of power
+
+The attuned transmitter asks its question once per tick, and the answer used to be a walk of
+`world.loadedTileEntityList` for every world. The tile entities now file themselves under their frequency as they
+`validate()` and `invalidate()`, so a query sees only the blocks that share its frequency. Two details decided the
+shape:
+
+* **It indexes tile entities, not values.** Receiver power is a `getBlockPowerInput` read, i.e. a redstone input that
+  can change at any moment. A cached maximum would go stale on the next lever pull; the query still reads each
+  tile's live `power` field, exactly as the scan did, and still checks that the block there is really the receiver.
+* **`frequency` had to become private.** A direct field write leaves the tile filed under its old key and silently
+  stops coupling. The gametest did exactly that, and had to be converted to `setFrequency()`; external code that
+  asserts on the field will now fail to compile rather than misbehave at runtime.
+
+Entries leave by three mechanisms: `invalidate()`, a `WorldEvent.Unload` hook (a world that is unloaded never ticks
+again, so its tiles never reach `invalidate()`), and a sweep of invalid entries during a query. Only the third is
+load-bearing for correctness; the others keep the lists small.
+
+### 6.2 MiscUtils: why not the static rotation
+
+The review suggested a static `int[]` rotated by a random start, which would have removed the last allocation. It
+is not a fair order for the question being asked. Both callers hand something valuable to the first side they find -
+the heating coil's entire tick of heat, the battery's entire tick of energy - so "which side wins" has to be
+uniform. With candidates on two sides, a rotation from a uniform start visits one of them first in **4,037 of 6,000
+draws** instead of 3,000: a coil between two furnaces would have fed one of them two thirds of the time and let the
+other starve.
+
+What shipped is a primitive `int[]` and a Fisher-Yates shuffle against a private `Random`: no boxing, no lock, one
+six-element array, against six `world.getTileEntity` calls. `getHeatReceiverNeighborIsFairBetweenTwoAdjacentReceivers`
+pins the property and fails on the rotation.
 
 ---
 
@@ -1041,8 +1077,9 @@ roughly 60% and make it impossible to forget a subtype. Note `ItemSledge`/`ItemS
 ### 7.6 Unchecked collections
 
 `ArtificeTickHandler` (`TMap<Integer, ArrayDeque<ISuspendableGen>>` used with raw casts), `WorldGenSulfur/Desert`
-(`new ArrayList()` raw), `compat/Forestry` (`List<ItemStack>` unchecked cast from reflection), `MiscUtils`
-(`Integer[]` shuffles), `ArtificeRegistry` (`ArrayList<Object>` input lists). Most of these are decompiler
+(`new ArrayList()` raw), `ArtificeRegistry` (`ArrayList<Object>` input lists), `ItemSledge`'s recipe list. The
+`MiscUtils` `Integer[]` shuffles are gone (§6.2), and so is the `compat/Forestry` reflection cast - that class now
+compiles against the real API (§9.10). Most of these are decompiler
 artefacts and are safe to parameterise.
 
 ### 7.7 Magic numbers that deserve names
@@ -1229,14 +1266,16 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
-  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, plus the metadata-table invariants and
-  the `@Mod`/`@Instance` agreement.
-* **In-game (1,696 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, plus the
+  metadata-table invariants and the `@Mod`/`@Instance` agreement.
+* **In-game (1,709 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
   box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
-  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour).
+  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
+  attuned link through real placement (including a transmitter that must not count as its own source), and the ore
+  layer generator over a real chunk.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
