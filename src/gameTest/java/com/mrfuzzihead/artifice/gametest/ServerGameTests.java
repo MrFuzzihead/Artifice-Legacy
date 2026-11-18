@@ -917,6 +917,21 @@ public final class ServerGameTests {
                 "an unanchored scaffold of another tier does not cancel an anchored neighbour",
                 ArtificeBlocks.blockScaffold.canBlockStay(world, cx, cy, cz));
 
+            // The overhang is the tier radius, on a real world and real blocks: a tier-0 chain reaches four blocks
+            // from its anchor and no further (CODE_REVIEW §6).
+            int bx = site.x + 6;
+            int bz = site.z;
+            site.setBlock(bx, cy - 1, bz, Blocks.stone, 0);
+            for (int i = 0; i <= 5; i++) {
+                site.setBlock(bx + i, cy, bz, ArtificeBlocks.blockScaffold, 0);
+            }
+            for (int i = 0; i <= 5; i++) {
+                checkEquals(
+                    "a tier-0 chain " + i + " blocks from its anchor",
+                    i <= 4,
+                    ArtificeBlocks.blockScaffold.canBlockStay(world, bx + i, cy, bz));
+            }
+
             // Remove the anchor's ground: now nothing within reach is anchored and the block must go.
             world.setBlockToAir(cx, cy - 1, cz + 1);
             check(

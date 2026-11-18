@@ -1,6 +1,9 @@
 package com.mrfuzzihead.artifice.block.frame;
 
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 import net.minecraft.block.Block;
 import net.minecraft.client.renderer.texture.IIconRegister;
@@ -180,46 +183,81 @@ public class BlockFrameScaffold extends BlockFrame {
     }
 
     private boolean checkStay(World world, int x, int y, int z, int meta) {
-        BlockCoord c = new BlockCoord(x, y, z);
-        if (this.isRooted(world, x, y, z, meta)) {
-            return true;
-        } else {
-            for (ForgeDirection d : sides) {
-                BlockCoord t = c.copy()
-                    .offset(d.ordinal());
-                if (t.getBlock(world) instanceof BlockFrameScaffold) {
-                    if (t.blockEquals(world, this, meta)) {
-                        if (this.isRooted(world, t.x, t.y, t.z, meta)) {
-                            return true;
-                        }
-
-                        for (BlockCoord match : c.getRadiusMatches(world, this.getOverhang(meta), this, meta)) {
-                            if (this.isRooted(world, match.x, match.y, match.z, meta)
-                                && c.isConnected(world, match, this, meta)
-                                && c.getDistance(match) <= this.getOverhang(meta)) {
-                                return true;
-                            }
-                        }
-                    }
-
-                    // Keep looking: an unrooted scaffold neighbour says nothing about the other five sides, and
-                    // returning here dropped blocks that had a perfectly good anchor elsewhere (CODE_REVIEW 5.7).
-                    continue;
-                }
-            }
-
-            return false;
-        }
+        return isSupported(world, this, meta, this.getOverhang(meta), x, y, z);
     }
 
-    private boolean isRooted(World world, int x, int y, int z, int meta) {
+    /**
+     * Is a scaffold of this block and tier supported at that position?
+     *
+     * <p>
+     * Static and package-private so it can be tested without a registered block: the support question is a graph
+     * predicate, and {@code BlockFrameScaffoldSupportTest} checks it against a transcription of the algorithm this
+     * replaced (CODE_REVIEW §6).
+     * </p>
+     */
+    static boolean isSupported(World world, Block block, int meta, int overhang, int x, int y, int z) {
+        BlockCoord start = new BlockCoord(x, y, z);
+        if (isRooted(world, block, meta, x, y, z)) {
+            return true;
+        }
+
+        // One flood fill over the connected run of same-block, same-tier scaffolds. The old shape was a full
+        // (2r+1)^3 cube scan - 35,937 block reads at tier 3 - followed by a flood fill per candidate, each with
+        // LinkedList.contains and a fresh BlockCoord per neighbour: tens of thousands of block reads and millions of
+        // list comparisons for a question with one answer.
+        //
+        // Two details keep this the same question the old code asked:
+        //
+        // - the search only starts if one of the five sides is the same block and tier, because that is what the old
+        // loop required. The consequence is deliberate and worth knowing: a scaffold is not supported by the block
+        // directly over it, so a column cannot be built downwards from an anchored one. Changing that is a
+        // gameplay decision, not a refactor (see CODE_REVIEW §9.11);
+        // - once started, the walk covers the whole connected run, not just what is within the overhang. An anchor
+        // within reach can be connected only through blocks outside it (a ring, a U), and the old code found
+        // those because isConnected() was unbounded while the distance check was not.
+        boolean touchesASide = false;
+        for (ForgeDirection d : sides) {
+            if (start.copy()
+                .offset(d.ordinal())
+                .blockEquals(world, block, meta)) {
+                touchesASide = true;
+                break;
+            }
+        }
+
+        if (!touchesASide) {
+            return false;
+        }
+
+        Set<BlockCoord> seen = new HashSet<>();
+        ArrayDeque<BlockCoord> frontier = new ArrayDeque<>();
+        seen.add(start);
+        frontier.add(start);
+
+        while (!frontier.isEmpty()) {
+            BlockCoord c = frontier.poll();
+            if (start.getDistance(c) <= overhang && isRooted(world, block, meta, c.x, c.y, c.z)) {
+                return true;
+            }
+
+            for (BlockCoord neighbour : c.getAdjacent()) {
+                if (neighbour.blockEquals(world, block, meta) && seen.add(neighbour)) {
+                    frontier.add(neighbour);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    static boolean isRooted(World world, Block block, int meta, int x, int y, int z) {
         for (int i = y - 1; i > 0; i--) {
             if (!world.isSideSolid(x, i, z, ForgeDirection.UP)) {
                 return false;
             }
 
             if (!world.getBlock(x, i, z)
-                .equals(this)) {
+                .equals(block)) {
                 return true;
             }
 
