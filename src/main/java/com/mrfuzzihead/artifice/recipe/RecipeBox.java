@@ -14,6 +14,13 @@ public class RecipeBox implements IRecipe {
 
     private ItemStack output;
 
+    /**
+     * Shown by anything that asks for the recipe output without matching it first - NEI's handlers, recipe lists,
+     * tooltips and {@code ItemSledge#getIngredientsForItemStack}, which walks every recipe in the manager. Returning
+     * null there is a crash waiting in someone else's code (CODE_REVIEW 5.18).
+     */
+    private final ItemStack defaultOutput = new ItemStack(ArtificeItems.itemBox);
+
     public boolean matches(InventoryCrafting craft, World world) {
         this.output = null;
         ItemStack box = null;
@@ -134,7 +141,7 @@ public class RecipeBox implements IRecipe {
     }
 
     public ItemStack getCraftingResult(InventoryCrafting inventorycrafting) {
-        return this.output.copy();
+        return (this.output != null ? this.output : this.defaultOutput).copy();
     }
 
     public int getRecipeSize() {
@@ -142,6 +149,6 @@ public class RecipeBox implements IRecipe {
     }
 
     public ItemStack getRecipeOutput() {
-        return this.output;
+        return this.output != null ? this.output : this.defaultOutput;
     }
 }

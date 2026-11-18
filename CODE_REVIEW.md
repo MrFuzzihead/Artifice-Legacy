@@ -597,6 +597,15 @@ box (crafted, or emptied by right-click) has no NBT; using it in any crafting re
 
 `ItemBox.onItemRightClick` has the same pattern (`item/ItemBox.java:87`) but is guarded by `if (tag != null)`.
 
+**Status: fixed on `refactor/1.1.6`** — a null tag and a stored item id that no longer resolves both skip the slot.
+
+**Fixing it uncovered a worse bug in the same method: the box's contents were being destroyed.** The non-sneak path
+only ever produced an output stack when the contents overflowed a max stack (`if (thing.getMaxStackSize() < size)`),
+and the sneaking path computed `num * size - numPer`, which is zero for a single box. So crafting with a filled box -
+the normal way to empty one - consumed the box and gave back **nothing** at all. It now hands over
+`boxes * damage` items in max-stack chunks, using the same shape as the right-click path in `ItemBox`, which was the
+working reference all along. That is a data-loss fix that was hiding behind the NPE.
+
 ### 5.18 `RecipeBox` / `RecipeUpgrade` return a null `getRecipeOutput()` — **P2**
 
 `recipe/RecipeBox.java:144` and `recipe/RecipeUpgrade.java:170` return `this.output`, which is only set by
@@ -607,6 +616,12 @@ handlers do not always check.
 
 Fix: keep a separate `defaultOutput` field (or return `ArtificeItems.itemBox`'s empty stack) and never return
 `null`.
+
+**Status: fixed on `refactor/1.1.6`.** Both classes carry a `defaultOutput` (an empty box, an empty upgrade) and
+`getRecipeOutput`/`getCraftingResult` fall back to it, so a caller that never matched gets a real stack instead of
+null. The in-game test walks `CraftingManager` for both recipe types and asserts a non-null output with a non-null
+item - against the old code the group reports `threw java.lang.NullPointerException` (on the empty-box case, which
+runs first).
 
 ### 5.19 `BlockFrameDetector` keeps rescheduling itself — **P2 (lag)**
 

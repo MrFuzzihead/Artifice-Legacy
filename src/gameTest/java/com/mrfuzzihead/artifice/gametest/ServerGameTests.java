@@ -9,8 +9,11 @@ import net.minecraft.block.Block;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.enchantment.Enchantment;
 import net.minecraft.entity.item.EntityItem;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
@@ -29,14 +32,20 @@ import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
+import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
+import com.mrfuzzihead.artifice.recipe.BoxCraftingHandler;
 import com.mrfuzzihead.artifice.recipe.EnumUpgrades;
+import com.mrfuzzihead.artifice.recipe.RecipeBox;
+import com.mrfuzzihead.artifice.recipe.RecipeUpgrade;
 import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
+
+import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 
 /**
  * The in-game assertions. Each {@code check*} method reports every failure through {@link #check} so the exit code
@@ -86,6 +95,7 @@ public final class ServerGameTests {
         run("ore dictionary dependence", ServerGameTests::checkOreDictionaryDependence);
         run("sledge dispenser", ServerGameTests::checkSledgeDispenser);
         run("recipes", ServerGameTests::checkRecipes);
+        run("box recipes", ServerGameTests::checkBoxRecipes);
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
         run("enchantments", ServerGameTests::checkEnchantments);
@@ -986,6 +996,115 @@ public final class ServerGameTests {
         }
 
         return 0;
+    }
+
+    /**
+     * CODE_REVIEW 5.17 and 5.18.
+     *
+     * <p>
+     * 5.17: {@code BoxCraftingHandler} read {@code slot.getTagCompound()} without a null check, and the event fires
+     * for every craft while a box sits in the grid - so an empty box (which has no NBT) made every craft in that
+     * grid throw.
+     * </p>
+     *
+     * <p>
+     * 5.18: {@code RecipeBox}/{@code RecipeUpgrade} returned the output of the last {@code matches} call, null until
+     * then. Anything that walks the recipe list without matching (NEI handlers, tooltips) got null.
+     * </p>
+     */
+    private static void checkBoxRecipes() {
+        World world = overworld();
+
+        // 5.17: an empty box in the grid must not break the craft.
+        EntityPlayer player = net.minecraftforge.common.util.FakePlayerFactory
+            .getMinecraft((net.minecraft.world.WorldServer) world);
+        check("fake player available", player != null);
+        if (player == null) return;
+
+        InventoryCrafting matrix = new InventoryCrafting(new Container() {
+
+            @Override
+            public boolean canInteractWith(EntityPlayer ignored) {
+                return true;
+            }
+        }, 3, 3);
+
+        ItemStack emptyBox = new ItemStack(ArtificeItems.itemBox, 1, 0);
+        matrix.setInventorySlotContents(0, emptyBox);
+        ItemStack crafted = new ItemStack(Items.stick);
+        new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
+        check("an empty box in the grid does not throw during craft", matrix.getStackInSlot(0) != null);
+
+        // 5.17, filled box: the stored items are handed to the player and the box is consumed. The box's damage is
+        // how many items it holds, and the old code gave none of them unless they overflowed a stack.
+        ItemStack fullBox = new ItemStack(ArtificeItems.itemBox, 1, 5);
+        NBTTagCompound held = new NBTTagCompound();
+        held.setInteger("id", Item.getIdFromItem(Items.iron_ingot));
+        held.setInteger("meta", 0);
+        fullBox.setTagCompound(held);
+        matrix.setInventorySlotContents(0, fullBox);
+
+        int before = countItem(player, Items.iron_ingot);
+        new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
+        checkEquals("a five-item box yields five ingots", before + 5, countItem(player, Items.iron_ingot));
+        check("a filled box is consumed", matrix.getStackInSlot(0) == null || matrix.getStackInSlot(0).stackSize == 0);
+
+        // Sneak-crafting empties every box in the slot. The old arithmetic subtracted one box's worth and gave
+        // nothing for a single box.
+        ItemStack stackOfBoxes = new ItemStack(ArtificeItems.itemBox, 3, 4);
+        NBTTagCompound heldFour = new NBTTagCompound();
+        heldFour.setInteger("id", Item.getIdFromItem(Items.gold_ingot));
+        heldFour.setInteger("meta", 0);
+        stackOfBoxes.setTagCompound(heldFour);
+        matrix.setInventorySlotContents(0, stackOfBoxes);
+
+        int goldBefore = countItem(player, Items.gold_ingot);
+        Tracking.sneaks.add(player.getEntityId());
+        try {
+            new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
+        } finally {
+            Tracking.sneaks.remove(Integer.valueOf(player.getEntityId()));
+        }
+        checkEquals(
+            "sneak-crafting three boxes of four yields twelve",
+            goldBefore + 12,
+            countItem(player, Items.gold_ingot));
+        check(
+            "sneak-crafting consumes every box",
+            matrix.getStackInSlot(0) == null || matrix.getStackInSlot(0).stackSize == 0);
+
+        // 5.18: every box/upgrade recipe in the manager must have a non-null output without being matched.
+        int checked = 0;
+        for (Object object : CraftingManager.getInstance()
+            .getRecipeList()) {
+            if (!(object instanceof RecipeBox) && !(object instanceof RecipeUpgrade)) {
+                continue;
+            }
+
+            IRecipe recipe = (IRecipe) object;
+            ItemStack output = recipe.getRecipeOutput();
+            check(
+                recipe.getClass()
+                    .getSimpleName() + " has a default output",
+                output != null);
+            check(
+                recipe.getClass()
+                    .getSimpleName() + " default output has an item",
+                output != null && output.getItem() != null);
+            checked++;
+        }
+        check("box/upgrade recipes are registered (" + checked + ")", checked > 0);
+    }
+
+    private static int countItem(EntityPlayer player, Item item) {
+        int count = 0;
+        for (ItemStack stack : player.inventory.mainInventory) {
+            if (stack != null && stack.getItem() == item) {
+                count += stack.stackSize;
+            }
+        }
+
+        return count;
     }
 
     private static void checkRecipes() {

@@ -16,6 +16,12 @@ public class RecipeUpgrade implements IRecipe {
 
     private ItemStack output;
 
+    /**
+     * Placeholder for callers that ask for the output without matching first; see {@link RecipeBox}. The real output
+     * is whatever tool the recipe matched, which is only known after {@code matches} runs (CODE_REVIEW 5.18).
+     */
+    private final ItemStack defaultOutput = new ItemStack(ArtificeItems.itemUpgrade);
+
     public boolean matches(InventoryCrafting craft, World world) {
         this.output = null;
         int numTools = 0;
@@ -150,7 +156,7 @@ public class RecipeUpgrade implements IRecipe {
     }
 
     public ItemStack getCraftingResult(InventoryCrafting craft) {
-        return this.output.copy();
+        return (this.output != null ? this.output : this.defaultOutput).copy();
     }
 
     public int getRecipeSize() {
@@ -158,6 +164,6 @@ public class RecipeUpgrade implements IRecipe {
     }
 
     public ItemStack getRecipeOutput() {
-        return this.output;
+        return this.output != null ? this.output : this.defaultOutput;
     }
 }
