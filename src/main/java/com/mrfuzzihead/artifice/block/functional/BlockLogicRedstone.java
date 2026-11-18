@@ -154,25 +154,26 @@ public class BlockLogicRedstone extends Block implements ITileEntityProvider {
 
     public boolean canConnectRedstone(IBlockAccess blockAccess, int x, int y, int z, int side) {
         TileEntity te = blockAccess.getTileEntity(x, y, z);
-        if (te instanceof TileEntityLogic) {
-            TileEntityLogic tel = (TileEntityLogic) te;
-            switch (side) {
-                case -1:
-                    return tel.sides[1] != TileEntityLogic.SideState.DISABLED;
-                case 0:
-                    return tel.sides[2] != TileEntityLogic.SideState.DISABLED;
-                case 1:
-                    return tel.sides[5] != TileEntityLogic.SideState.DISABLED;
-                case 2:
-                    return tel.sides[3] != TileEntityLogic.SideState.DISABLED;
-                case 3:
-                    return tel.sides[4] != TileEntityLogic.SideState.DISABLED;
-                default:
-                    return false;
-            }
-        } else {
+        if (!(te instanceof TileEntityLogic)) {
             return false;
         }
+
+        TileEntityLogic tel = (TileEntityLogic) te;
+
+        if (side < 0 || side >= ForgeDirection.VALID_DIRECTIONS.length) {
+            // Vanilla passes -1 when the direction is unknown ("do you connect at all?").
+            for (TileEntityLogic.SideState state : tel.sides) {
+                if (state != TileEntityLogic.SideState.DISABLED) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Same mapping as isProvidingWeakPower, so the face that renders a connection is the face that emits
+        // (CODE_REVIEW 5.8). The hand-written table this replaces agreed with neither.
+        return tel.sides[ForgeDirection.OPPOSITES[side]] != TileEntityLogic.SideState.DISABLED;
     }
 
     public boolean canProvidePower() {

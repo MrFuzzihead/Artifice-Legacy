@@ -4,6 +4,7 @@ import java.util.ArrayList;
 
 import net.minecraft.item.ItemStack;
 
+import com.carpentersblocks.util.registry.FeatureRegistry;
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
@@ -18,9 +19,10 @@ public class CarpentersBlocks implements ICompat {
     @Override
     public void load() {
         try {
-            Class<?> featureClass = Class.forName("com.carpentersblocks.util.registry.FeatureRegistry");
-            ArrayList<String> coverExceptions = (ArrayList<String>) featureClass.getField("coverExceptions")
-                .get(null);
+            // compileOnly reference: CarpentersBlocks is an optional dependency, so this class is only loaded when
+            // Loader.isModLoaded("CarpentersBlocks") said so. Throwable, not Exception, because a CarpentersBlocks
+            // version without the field would surface as NoSuchFieldError from an optional integration.
+            ArrayList<String> coverExceptions = FeatureRegistry.coverExceptions;
 
             for (int i = 0; i < ArtificeConfig.tiers.length; i++) {
                 coverExceptions.add(new ItemStack(ArtificeBlocks.blockReinforced, 1, i).getDisplayName());

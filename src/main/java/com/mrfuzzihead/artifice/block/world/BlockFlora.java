@@ -15,6 +15,7 @@ import net.minecraft.world.World;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -35,7 +36,8 @@ public class BlockFlora extends BlockFlower {
 
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(int side, int meta) {
-        return meta > ArtificeConfig.flora.length ? icons[0] : icons[meta];
+        // Metadata comes from NBT, so "meta == flora.length" is reachable even though it is not a valid subtype.
+        return ArrayUtils.getOrFirst(this.icons, meta);
     }
 
     @SideOnly(Side.CLIENT)
@@ -54,6 +56,11 @@ public class BlockFlora extends BlockFlower {
         if (meta == 4 && world.getBlockLightValue(x, y, z) >= 8) {
             world.setBlockMetadataWithNotify(x, y, z, 3, 2);
         }
+
+        // BlockBush#updateTick is what drops the flower when it can no longer stand (soil gone, light gone), and it
+        // never ran because this override did not call it (CODE_REVIEW 5.16). A flower on a removed dirt block could
+        // therefore sit there until some unrelated neighbour update happened to arrive.
+        super.updateTick(world, x, y, z, random);
     }
 
     @SideOnly(Side.CLIENT)

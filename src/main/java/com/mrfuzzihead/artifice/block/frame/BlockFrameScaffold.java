@@ -15,6 +15,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.BlockCoord;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -59,22 +60,16 @@ public class BlockFrameScaffold extends BlockFrame {
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(int side, int meta) {
-        if (meta >= ArtificeConfig.tiers.length) {
-            meta = 0;
-        }
-
-        return side != 0 && side != 1 ? this.sideIcons[meta] : this.icons[meta];
+        return ArrayUtils.getOrFirst(side != 0 && side != 1 ? this.sideIcons : this.icons, meta);
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(IBlockAccess access, int x, int y, int z, int side) {
-        int meta = access.getBlockMetadata(x, y, z);
-        if (meta > ArtificeConfig.tiers.length) {
-            meta = 0;
-        }
-
-        return side != 0 && side != 1 ? this.sideIcons[access.getBlockMetadata(x, y, z)] : this.getIcon(side, meta);
+        // The side branch used to index sideIcons with the raw metadata, unchecked - a corrupt meta was an AIOOBE
+        // from inside chunk rendering.
+        return ArrayUtils
+            .getOrFirst(side != 0 && side != 1 ? this.sideIcons : this.icons, access.getBlockMetadata(x, y, z));
     }
 
     @SideOnly(Side.CLIENT)
@@ -131,7 +126,9 @@ public class BlockFrameScaffold extends BlockFrame {
             if (held != null && hb != null
                 && hb.equals(this)
                 && held.getItemDamage() == world.getBlockMetadata(x, y, z)) {
-                while (world.getBlock(x, y, z)
+                // Bound the climb: getBlock above y=255 is not guaranteed to be anything, and a pillar built to the
+                // build limit used to walk past it.
+                while (y < 256 && world.getBlock(x, y, z)
                     .equals(this)) {
                     y++;
                 }
@@ -195,7 +192,9 @@ public class BlockFrameScaffold extends BlockFrame {
                         }
                     }
 
-                    return false;
+                    // Keep looking: an unrooted scaffold neighbour says nothing about the other five sides, and
+                    // returning here dropped blocks that had a perfectly good anchor elsewhere (CODE_REVIEW 5.7).
+                    continue;
                 }
             }
 

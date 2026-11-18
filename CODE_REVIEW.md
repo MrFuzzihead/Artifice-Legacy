@@ -5,7 +5,8 @@
 | **Repository** | `MrFuzzihead/Artifice-Legacy` |
 | **Reviewed commit** | `616bb9e` (Initial decompilation build: namespace refactor, spotless, cofhCore dep) |
 | **Scope** | 145 Java files / ~17,600 lines, 1.7.10 Forge, GTNH RetroFuturaGradle buildchain, CoFHCore required |
-| **Companion PR** | #2 `feature/test-harness` — JUnit/Mockito/JaCoCo + in-game game-test mod (this document is `docs/code-review`) |
+| **Companion PRs** | #2 `feature/test-harness` — JUnit/Mockito/JaCoCo + in-game game-test mod. #3 `docs/code-review` — this document. Both merged into `main` at `762f04e`. |
+| **Follow-up branch** | `refactor/1.1.6` — the release branch for the work below, including the downstream audit in **Appendix E** |
 
 ---
 
@@ -13,30 +14,44 @@
 
 | # | Item | Kind | Priority |
 |---|---|---|---|
-| 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **now** |
-| 2 | `ArtificeCore.missingMappings` uses `event.get()`; after the mod-id change it must use `event.getAll()` or legacy worlds silently lose every block | bug (blocker for §4) | **P0** |
-| 3 | Registry names are `Artifice:tile.artifice.basalt` / `Artifice:item.artifice.box`. Normalise them while the mod-id is being changed, not later | migration | **P0** |
-| 4 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | **P0** |
-| 5 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | **P1** |
-| 6 | `MiscUtils` neighbour helpers double-index the side array (`sides[sides[i]]`), so 4 of 6 sides are usually skipped. Energy distribution and furnace heating are lossy | bug | **P1** |
-| 7 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | **P1** |
-| 8 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | **P1** |
-| 9 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | **P1** |
-| 10 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
-| 11 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
-| 12 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
-| 13 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
-| 14 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
-| 15 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
-| 16 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
-| 17 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
-| 18 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
-| 19 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
-| 20 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
-| 21 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
-| 22 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
+| 1 | Land the verification harness (PR #2): `./gradlew check` + `./gradlew gameTestServer` | infra | **done** |
+| 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | ~~P0~~ done |
+| 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | ~~P1~~ done |
+| 4 | ~~`MiscUtils` neighbour helpers double-index the side array~~ - **retracted**: the double index is a permutation either way, so nothing was ever skipped (§5.4). Cleaned up for readability only | not a defect | ~~P1~~ |
+| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done |
+| 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | ~~P1~~ done |
+| 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | ~~P1~~ done |
+| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
+| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
+| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
+| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
+| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
+| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
+| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
+| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
+| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
+| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
+| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
+| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
+| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
+
+### 0.1 Pack follow-ups
+
+These come from the downstream audit of the real pack (`FuzzCraft-Legacy`, 233 mod jars) in **Appendix E**. They
+are not codebase defects, but they decide whether the migration boots at all.
+
+| # | Item | Kind | Priority |
+|---|---|---|---|
+| P1 | **FuzziTweaks 1.2.0 hard-links `shukaro.artifice` from a Mixin.** Its `ArtificeEnchantsMixin` targets `shukaro.artifice.ArtificeEnchants` and reads `ArtificeConfig` / `ArtificeCore` fields. The target is gated on the *mod id* `Artifice`, which the rename does not change, so the mixin is still queued and then fails → **startup crash**. Must be dropped in the same release (§3.2, Appendix E.3) | pack | **P0** |
+| P2 | Port FuzziTweaks' enchant-id allocation in-tree **first**, preserving ids 70/71/72, or dropping the mixin silently re-collapses the three enchantments onto one id (§5.3) | code | **P0** |
+| P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
+| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
+
+P1 and P2 are **done**, in two halves that still have to be released together: the in-tree allocation and the
+70/71/72 assertion are on `refactor/1.1.6` here (§5.3), and the mixin, its config key and FuzziTweaks'
+`shukaro.artifice` compile dependency are gone on `refactor/drop-artifice-mixin` there. P3 and P4 are untouched.
 
 ---
 
@@ -109,9 +124,10 @@ that matters: no world migration is needed for (a).
 |---|---|---|
 | **Compile-time API break** | `shukaro.artifice.ArtificeRegistry` is a public, documented-by-usage entry point (`registerMarbleType`, `registerBasaltType`, `registerStoneType`, `registerDimensionBlacklist`, `registerWorldTypeBlacklist`, `registerTooltip`). Any addon that compiled against `shukaro.artifice.*` gets `NoClassDefFoundError` at load, not a graceful skip. | High if such addons exist |
 | **AE2 spatial whitelist** | `compat/AE2.java` sends four `whitelist-spatial` IMC messages whose *values are class names* (`com.mrfuzzihead.artifice.tile.TileEntityAttuned`, …). AE2 resolves them by class name. Old entries persisted from a previous version (`shukaro.artifice.tile.…`) will fail to resolve; AE2 logs and skips them. Re-sent on every load with the new names, so new worlds are correct, but a pre-existing AE2 config may keep stale `shukaro` strings forever. | Low, cosmetic |
-| **Reflection from other mods** | Nothing in this repo reflects into `shukaro.*`, but a pack addon could (`Class.forName("shukaro.artifice.ArtificeRegistry")`). Unknown until the pack scan. | Unknown |
-| **ForgeMultipart / BuildCraft / MFR / Forestry / Carpenters / EE3 interop** | All of these are ItemStack-, string- or reflection-based and reference *their own* classes, not ours. Unaffected. | None |
-| **Tile entities** | `ArtificeTiles` registers `"tileArtificeAttuned"` etc. Tile-entity ids are **not** namespaced and are **not** class names in 1.7.10, so chunk data loads unchanged. | None |
+| **Reflection from other mods** | Nothing in this repo reflects into `shukaro.*`. The pack scan (Appendix E) found exactly one consumer, and it is not reflection: **FuzziTweaks 1.2.0** links the old package directly from a Mixin (`@Mixin(value = shukaro.artifice.ArtificeEnchants.class)`, `@Overwrite initEnchants()`, plus `ArtificeConfig` / `ArtificeCore` field refs). It crashes on startup against the renamed build. | **Critical — must be fixed with the release** |
+| **Angelica** | `blockCrackFixRenderPassWhitelist` defaults to a list of block **class names**, including `shukaro.artifice.block.world.BlockOre`. Resolved by string, so the entry silently stops matching after the rename. Cosmetic (z-fighting on ores) and fixable in config, but the *default* lives in Angelica's jar, so a fresh instance regresses. | Low, and it recurs on reinstall |
+| **ForgeMultipart / BuildCraft / MFR / Forestry / Carpenters interop** | All of these are ItemStack-, string- or reflection-based and reference *their own* classes, not ours. Unaffected. (The EE3 compat has since been deleted; see §9.10.) | None |
+| **Tile entities** | `ArtificeTiles` registers `"tileArtificeAttuned"` etc. Tile-entity ids are **not** namespaced and are **not** class names in 1.7.10, so chunk data loads unchanged. Verified against the pack's own save: 414 region files, zero `shukaro` strings (§E.5). | None |
 | **`mcmod.info` / `authorList`** | Already lists `MrFuzzihead` and `Shukaro`. Fine. | None |
 
 ### 3.3 Recommendation
@@ -119,259 +135,40 @@ that matters: no world migration is needed for (a).
 1. **Do nothing to existing worlds.** There is nothing to migrate.
 2. **Treat `ArtificeRegistry` as an API.** Right now it lives in the root package and is `public abstract` with
    static helpers. If anything in your pack calls it, move it to `com.mrfuzzihead.artifice.api.ArtificeRegistry`
-   *and* keep a deprecated `shukaro.artifice.ArtificeRegistry` subclass for one release. If nothing calls it
-   (the pack scan will tell you), leave it where it is and stop calling it "API".
-3. **Add a pack scan before release** (commands in Appendix C). The patterns that matter:
-   `shukaro`, `shukaro.artifice`, `ArtificeRegistry`, `registerMarbleType`, `registerBasaltType`,
-   `registerStoneType`, and (from §4) `Loader.isModLoaded("Artifice")`, `required-after:Artifice`,
-   `FMLInterModComms.sendMessage("Artifice"`.
+   *and* keep a deprecated `shukaro.artifice.ArtificeRegistry` subclass for one release. The pack scan says
+   **nothing calls it** — leave it where it is and stop calling it "API" (Appendix E).
+3. **The pack scan is done** (Appendix C commands, results in Appendix E). Among 233 jars, four mention
+   `shukaro`, and only one is about this mod: FuzziTweaks 1.2.0, which is a **hard break** and is covered in
+   §0.1 / E.3. NodalMechanics (`shukaro.nodalmechanics`) and `gtnh-web-map` (`shukaro.warptheory`) are the same
+   author in different packages and are irrelevant.
 4. **Do not rename the CoFH worldgen feature names.** They are hashed into every chunk (`WorldHandler.genHash`)
-   to drive retrogen. A rename would look like "the pack changed its worldgen" and can trigger a full retrogen.
-   They do not contain the package, so this is purely a "don't touch" note for later cleanup.
+   to drive retrogen. Measured on the real save: 11 distinct `Artifice:<registryName> <feature>` strings, 3.36M
+   occurrences across 414 region files (E.8). The hash contains the **mod id, the registry name and the feature
+   name**, which is the main reason the rename is off the table (§4).
 
 ---
 
-## 4. Migration (b): mod id `Artifice` → `artifice`
+## 4. Migration (b): mod id `Artifice` → `artifice` — **rejected**
 
-This is the risky one, because the mod id is stamped into **every block and item registry name** in the world.
+The mod id and the registry names stay as they are. Recorded here so it does not get re-proposed.
 
-### 4.1 What FML actually keys on the mod id
+The case against was measured on the real pack (Appendix E):
 
-From the 1.7.10 FML sources (`GameData.addPrefix`, `Loader.fireMissingMappingEvent`,
-`FMLPreInitializationEvent`), a mod id is used for:
+* **CoFH retrogen hashes.** Every chunk stores `Artifice:<registryName> <featureName>` for each feature CoFH ran —
+  3,358,850 occurrences in 11 distinct forms in one test world (E.8). Changing the mod id or a registry name makes
+  CoFH treat that feature as new for every chunk and re-run it over existing terrain: duplicate ore clusters and
+  lakes in already-generated worlds.
+* **Configs key on `modid:name`.** AE2 (facade list + `Facades.cfg`), ProjectE, RTG, Mystcraft and UniDict all name
+  Artifice stacks that way (E.7). Each would need re-keying, or a legacy alias layer, or both.
+* **Nothing needs it.** No jar in the pack depends on the mod id — no `required-after:Artifice`, no IMC address, no
+  network channel, no mod-container lookup (E.2). The only two consumers are Chisel, whose table is already broken
+  (E.4), and FuzziTweaks, which is ours and is being fixed anyway (E.3).
+* **The upside was cosmetic** — `artifice:basalt` instead of `artifice:tile.artifice.basalt` — against a release
+  that would have to carry `missingMappings` remaps for every block and item, a config migration, and a worldgen
+  retrogen story.
 
-| Mechanism | Code | Persisted? | Affected by the rename? |
-|---|---|---|---|
-| Block/item registry domain | `GameData.addPrefix()` → `modId + ":" + name` | **yes** — chunk NBT + every `ItemStack` NBT | **yes** — every block, every item |
-| Config file name | `new File(configDir, activeContainer.getModId() + ".cfg")` | yes (on disk) | **yes** — `config/Artifice.cfg` is orphaned |
-| `@Instance` injection | `@Mod.Instance("Artifice")` | no | must match the new id or injection fails |
-| `Loader.isModLoaded` / `required-after:` | exact string match | in other mods' jars | **yes** — other mods' dependency strings break |
-| IMC address | `FMLInterModComms.sendMessage("Artifice", …)` | no | **yes** — silently dropped |
-| `getModContainer("Artifice")` | exact string match | no | yes, if anyone calls it |
-| Network channel | `NetworkRegistry.newChannel("Artifice", …)` | no | **no** — the channel name is arbitrary. Keep or change freely, but change both sides together |
-| Creative tab label | `new ArtificeCreativeTab("Artifice")` | no | no |
-| Enchantment names | `setName("artifice.invisible")` | no (ids are persisted) | no |
-| Tile-entity ids | `"tileArtificeAttuned"` | yes | **no** — not namespaced |
-| Ore dictionary / fluids | `"oreMarble"`, `"oil"` | yes | no |
-| CoFH worldgen feature names | `"Artifice: … Cycles"` | hash in chunk NBT | no (and do not change them) |
-
-### 4.2 The registry-name problem, in full
-
-Because every block/item is registered **from its own constructor** with `this.getUnlocalizedName()` as the
-name, the current registry names carry the `tile.`/`item.` prefix *and* the `artifice.` prefix:
-
-```
-Block: Artifice:tile.artifice.basalt
-Item:  Artifice:item.artifice.sledge.wood
-Slab:  Artifice:tile.artifice.basalt.slab
-Ore:   Artifice:tile.artifice.orecoal
-Fluid: Artifice:tile.artifice.fluid.oil
-Bucket:Artifice:item.bucket
-```
-
-A raw `Artifice` → `artifice` swap therefore produces `artifice:tile.artifice.basalt`. That is *correct* but
-ugly, and it means you would have to do a second, equally risky rename later. **Do both in one release.**
-
-Recommended target names:
-
-```
-artifice:basalt            artifice:basalt.slab        artifice:basalt.stairs.cobblestone
-artifice:marble            artifice:ore_coal           artifice:sledge.wood
-artifice:frame             artifice:lamp.white         artifice:glasswall
-```
-
-Appendix A has the full current-name → proposed-name table, derived from the source.
-
-Two hard constraints when you do this:
-
-1. **Blocks and their `ItemBlock`s must keep the same name.** `GameData.verifyItemBlockName` throws
-   `IllegalStateException` if `iBlockRegistry.getNameForObject(block)` and `iItemRegistry.getNameForObject(itemBlock)`
-   differ. `registerBlock(block, itemclass, name)` registers both under `name`, so passing one normalised name is
-   enough — do not normalise the block and item names separately.
-2. **Do not pass a name that already has a prefix.** `GameData.registerBlock` logs
-   `bigWarning("Illegal extra prefix …")` when the name already contains `:` (and then keeps the old prefix).
-   Keep passing bare names; `addPrefix` adds the domain.
-
-### 4.3 The migration mechanism (this is the part that must be right)
-
-`FMLMissingMappingsEvent` is the only supported hook, and there are three traps:
-
-**(a) `event.get()` will return an empty list after the rename.**
-
-`Loader.fireMissingMappingEvent` builds the event as
-`missingMappings.put(m.name.substring(0, m.name.indexOf(':')), m)` — the key is the **domain from the saved
-name** — and `FMLMissingMappingsEvent.get()` returns `missing.get(activeContainer.getModId())`. After the rename,
-the container id is `artifice` while the saved names say `Artifice:`, so `get()` returns nothing. Only
-`getAll()` sees them. The current handler (`ArtificeCore.java:138`) uses `get()`.
-
-**(b) Each mapping must be remapped to the *same kind* of object**, and the target must already be registered:
-
-```java
-// sketch - ArtificeCore#missingMappings, after the rename
-private static final String LEGACY_DOMAIN = "Artifice:";
-private static final String DOMAIN = modID + ":";   // "artifice:"
-
-@EventHandler
-public void missingMappings(FMLMissingMappingsEvent event) {
-    for (MissingMapping m : event.getAll()) {      // getAll(), not get()
-        try {
-            if (m.type == Type.BLOCK) {
-                Block target = (Block) Block.blockRegistry.getObject(remapName(m.name));
-                if (target != null) m.remap(target); else m.warn();
-            } else {
-                Item target = (Item) Item.itemRegistry.getObject(remapName(m.name));
-                if (target != null) m.remap(target); else m.warn();
-            }
-        } catch (RuntimeException e) {
-            m.warn();   // remap() throws if the target is unregistered or the type is wrong
-        }
-    }
-}
-
-/** Maps a legacy name to the new one: both the domain swap and the path normalisation. */
-private static String remapName(String legacyName) {
-    if (!legacyName.startsWith(LEGACY_DOMAIN)) {
-        return legacyName.replace("dobule", "double");   // keep the existing typo fix working for legacy blocks too
-    }
-    String path = legacyName.substring(LEGACY_DOMAIN.length());
-    if (path.startsWith("tile.artifice.")) path = path.substring("tile.artifice.".length());
-    else if (path.startsWith("item.artifice.")) path = path.substring("item.artifice.".length());
-    else if (path.startsWith("item.")) path = path.substring("item.".length());
-    return DOMAIN + path;
-}
-```
-
-Notes:
-
-* `remap()` registers an *alias* in `GameData.iBlockRegistry` / `iItemRegistry`
-  (`Registry.addAlias(oldName, newName)`), so `ItemStack.loadItemStackFromNBT` resolves old names for the rest of
-  that session. When a chunk or an inventory is written again it writes the new name, so the alias load
-  disappears naturally.
-* `MissingMapping.remap(Block)` throws `IllegalArgumentException` for an `ITEM` mapping and for an unregistered
-  target, and `NullPointerException` for a null target. Hence the try/catch. Mapping an ItemBlock via
-  `Item.getItemFromBlock(target)` is not needed if you look the item up in `Item.itemRegistry` by the same name.
-* The current `dobule` → `double` fix must be folded into the same `remapName` so that a legacy world with both
-  problems gets both fixed in one pass.
-* `event.getAll()` also hands you *other mods'* missing mappings. Filter on `startsWith(LEGACY_DOMAIN)` (or handle
-  `m.name` defensively) so you never touch another mod's data.
-
-**(c) The ID has to move with the name.** `processIdRematches` re-registers the target at `remap.id` and throws
-`IllegalStateException` if the new id differs. That is automatic with `remap()`; do not try to fix names by
-editing registries yourself.
-
-### 4.4 Config migration
-
-`config/Artifice.cfg` becomes `config/artifice.cfg` and every setting silently reverts to default. Two of those
-settings are **not cosmetic**:
-
-* `Enchantments/Starting ID for EID range` (default 70). If the file regenerates and the id moves, every existing
-  enchanted item keeps a numeric id that may now point at a different enchantment or at none.
-* `Compatibility/Marble List` and `Basalt List` drive `ArtificeRegistry` chains, which affect **recipes**.
-
-Add a one-time rename at the start of `preInit`, before any `Configuration` is constructed:
-
-```java
-File legacy = new File(evt.getModConfigurationDirectory(), "Artifice.cfg");
-File current = evt.getSuggestedConfigurationFile();
-if (legacy.isFile() && !current.isFile()) {
-    //noinspection ResultOfMethodCallIgnored
-    legacy.renameTo(current);     // fall back to copy+delete if renameTo fails across filesystems
-}
-```
-
-(Use `evt.getModConfigurationDirectory()` — `suggestedConfigurationFile` points at the *new* name.)
-
-### 4.5 Enchantment ids
-
-Ids are persisted as NBT shorts on items, and default to the 70..255 range from `enchantmentStartID`. Nothing
-about the rename changes them, but the *config regeneration* in 4.4 would. Keep 4.4, and consider documenting the
-recommended range in the config comment.
-
-Also note §5.3: if the range is exhausted the enchantments stay `null` and the mod NPEs. A large pack is exactly
-where both problems meet.
-
-### 4.6 Network channel
-
-`CommonProxy` creates `NetworkRegistry.newChannel("Artifice", …)`. The name is arbitrary and is not persisted,
-so the rename does not require touching it. If you do rename it, old and new clients cannot talk — which matters
-only for a mixed-version server, and FML's `required-after` handshake normally prevents that. Recommendation:
-change it to `artifice` for tidiness, in the same release, and note it in the changelog.
-
-### 4.7 IMC and `Loader.isModLoaded`
-
-`FMLInterModComms` delivery is keyed by mod id. A mod that sends `sendMessage("Artifice", "register-marble", …)`
-will be told "Mod Artifice not found" and the message is dropped. Two options:
-
-* **Option A (recommended, simplest):** accept the break, and document it. The IMC API is small and the
-  pack-facing entry point that matters (`ArtificeRegistry` via reflection) is rarer than `sendMessage`.
-* **Option B (compatibility shim):** ship a second, tiny `@Mod(modid = "Artifice", name = "Artifice (legacy id)")`
-  container in the same jar for one release. FML allows multiple `@Mod` classes per jar. It gets an empty
-  `preInit` and its own `processIMCRequests` that forwards `event.getMessages()` into `IMC.processIMC`.
-  `Loader.isModLoaded("Artifice")` and `required-after:Artifice` then keep working. Cost: a second mod-list entry,
-  a second `mcmod.info`-equivalent entry, and a deprecation window you have to remember to close.
-
-`Loader.isModLoaded` / `required-after` breakage is the one you cannot fix from inside a single container, so if
-your pack (or a popular addon) depends on it, Option B is the only way to ship the rename without a hard break.
-
-### 4.8 Feature names, fluids and other "looks like a mod id but isn't"
-
-* **CoFH `WorldHandler` feature names** (`getFeatureName()` in all nine `WorldGen*` classes) are hashed into a
-  per-chunk `genHash`. They are display strings prefixed `"Artifice: "`. Do **not** rename them as part of a
-  cosmetic cleanup; a rename is a worldgen event.
-* **`BlockFluid*`** pass `"Artifice".toLowerCase()` to CoFH's `BlockFluidCoFHBase`, which builds the *block name*
-  `artifice.fluid.oil`. Lower-cased already → the registry name stays `Artifice:tile.artifice.fluid.oil` today and
-  becomes `artifice:artifice.fluid.oil` unless normalised. Include the fluid blocks in the normalisation.
-* **`TextureHandler`** hardcodes `"Artifice".toLowerCase() + ":"` for the resource domain. The resource domain is
-  *not* the mod id and does not need to match it — leave it pointing at `assets/artifice`, or switch it to
-  `ArtificeCore.modID.toLowerCase()` for clarity. Do not change the asset folder as part of the rename; that would
-  break resource packs.
-
-### 4.9 Step-by-step release plan
-
-**Release N (current mod id, no functional change beyond the harness):**
-
-1. Merge PR #2. Tag a release so you have a "last known good `Artifice` id" build.
-2. Add the `getAll()`-based `missingMappings` handler *now*, while the id is still `Artifice`. It is a no-op for
-   same-id worlds (nothing missing) but it makes the next step a pure config change, and you can test the legacy
-   mapping path by hand-editing a chunk name.
-3. Add the config-file rename *now*, keyed on the same constant. Also a no-op today.
-
-**Release N+1 (the rename):**
-
-4. `modId = artifice`, `modGroup` unchanged, `@Mod(modid = "artifice")`, `@Instance("artifice")`,
-   `ArtificeCore.modID = "artifice"`.
-5. Register every block/item with a bare, normalised name (`"basalt"`, not `"tile.artifice.basalt"`). This is a
-   mechanical change in ~30 constructors; the `getUnlocalizedName()` calls in `ArtificeBlocks` for the slabs must
-   be replaced with explicit names at the same time.
-6. Verify:
-   * `./gradlew gameTestServer` — it asserts `name.startsWith(ArtificeCore.modID + ":")` and uniqueness for every
-     block and item, so a missed registration or a collision fails the suite.
-   * Load a pre-rename world and confirm: no "missing block" prompt, inventories intact, tile entities intact,
-     `fml-server-latest.log` shows the remaps (`FMLLog.fine("The Block %s is being remapped to %s.")`), and a
-     re-save round-trips without warnings.
-   * Check `config/artifice.cfg` contains the *old values* (i.e. 4.4 worked) — especially the enchantment start id.
-7. Optional: the legacy `Artifice` shim container (Option B) for one release, if the pack scan finds
-   `required-after:Artifice` or `Loader.isModLoaded("Artifice")`.
-
-**Release N+2:** drop the shim, drop the alias path only when you are comfortable that no world in the pack still
-holds `Artifice:` names (alias removal is safe once every chunk and every `ItemStack` has been re-saved at least
-once — practically: after one full play cycle, not one login).
-
-### 4.10 What the existing test suite already covers
-
-* `RegistrationInvariantsTest.modAnnotationAndConstantsAgree` fails if `@Mod(modid)`, `ArtificeCore.modID` and
-  `@Instance` drift apart — so step 4 cannot half-happen.
-* `ServerGameTests.checkRegistries` asserts every block and item name starts with `ArtificeCore.modID + ":"`, is
-  unique, and that every block has an `ItemBlock`. It follows the rename automatically and will catch a missed
-  registration or a `verifyItemBlockName` mismatch on the next run.
-* There is intentionally **no** test asserting the literal `"Artifice"`, so the rename does not require touching
-  the suite.
-* Missing from the harness (add when step 5 lands): a test that takes a fabricated `Artifice:tile.artifice.basalt`
-  NBT name and asserts the alias resolves to `artifice:basalt`. `FMLMissingMappingsEvent` is not constructible
-  without FML internals, so this is best done as a game-test assertion that calls the same `remapName` helper the
-  handler uses — extract it to a package-visible static method for that.
-
----
+Accepted consequence: Chisel's marble/limestone carving stays inert until its table is fixed or we register the
+carving groups ourselves (E.4, option 1). Appendix A is now a record of what is emitted, not a rename proposal.
 
 ## 5. Defect catalogue
 
@@ -415,6 +212,21 @@ if (ItemSledge.getIngredientsForBlock(world, target.x, target.y, target.z, stack
 returns `null` and the for-each throws. Cache the first result in a local. Also: `stack.setItemDamage(+1)` bypasses
 `damageItem` (no Unbreaking, no creative guard, can exceed `maxDamage`).
 
+**Status: fixed on `refactor/1.1.6`, and the NPE was hiding a second crash.** Reading the ingredients once is the
+whole fix for the NPE; damage now goes through `attemptDamageItem(1, rand)` and clears the stack when it exceeds
+`maxDamage`, which is what vanilla `damageItem` does without a player to attribute the break to.
+
+With the NPE out of the way the drop loop ran for the first time, and threw **`NoSuchMethodError:
+EntityItem.setVelocity(DDD)V` on a dedicated server**: `Entity.setVelocity` is `@SideOnly(Side.CLIENT)` and is
+stripped from the server jar by Forge's side transformer. The motion is now written to `motionX/motionY/motionZ`
+directly. This whole path had never executed on a server, which is the sort of thing the in-game harness exists to
+find - and did, on the first run.
+
+Game test `checkSledgeDispenser`: fires the behaviour at a real stone block, asserts the block is gone, exactly one
+cobblestone item entity appears near the target (snapshot diff, because the test site is shared), the sledge takes
+exactly one damage, an empty shot damages nothing, and a sledge at `maxDamage` is consumed. Against the old code the
+group reports `threw java.lang.NullPointerException`.
+
 ### 5.3 Enchantment registration can leave nulls that are dereferenced unconditionally — **P0 in large packs**
 
 `ArtificeEnchants.java:15-55` tries ids from `enchantmentStartID` (default 70) to 255 and leaves the field `null`
@@ -431,7 +243,57 @@ field for null at each use site, or fail loudly once at registration and disable
 warning). `ArtificeCreativeTab` is already only guarded by `ArtificeConfig.*Enable`, which is a *different*
 condition from "registration succeeded".
 
-### 5.4 `MiscUtils` neighbour helpers visit a permuted subset of the six sides — **P1**
+**There is a second, worse failure mode, and this pack hits it.** The loop's *only* collision test is the
+`IllegalArgumentException` that vanilla's `Enchantment(int, int, EnumEnchantmentType)` constructor throws on a
+duplicate id — it catches that and retries the next id. Mods that replace the enchantment store (EndlessIDs, which
+is in this pack, and similar conflict detectors) relocate duplicates instead of throwing, so the constructor stops
+being a collision signal. Each of the three loops then succeeds on its **first** try and all three enchantments
+land on id 70. The fields stay non-null, so the NPEs above do not fire; instead the three effects silently become
+one, and anything enchanted afterwards gets the wrong effect.
+
+So the fix is not only null guards — the allocation must stop relying on the constructor:
+
+```java
+public static void initEnchants() {
+    final boolean[] used = new boolean[Enchantment.enchantmentsList.length];
+    if (ArtificeConfig.enchantmentInvisibleEnable) {
+        int id = findFreeEnchantID(ArtificeConfig.enchantmentStartID, used);
+        if (id < 0) {
+            ArtificeCore.logger.warn("No available enchantment IDs for invisible enchant!");
+        } else {
+            used[id] = true;
+            enchantmentInvisible = new EnchantmentInvisible(id, ArtificeConfig.enchantmentInvisibleWeight);
+            ArtificeCore.logger.info("Registered invisible enchant to ID " + id);
+        }
+    }
+    // soulstealing, then resistance - same shape, same order
+}
+
+/** First id at or above {@code start} that is neither registered nor claimed earlier in this pass. */
+private static int findFreeEnchantID(int start, boolean[] used) {
+    int id = Math.max(0, start);
+    while (id < used.length && (Enchantment.enchantmentsList[id] != null || used[id])) id++;
+    return id < used.length ? id : -1;
+}
+```
+
+`used.length` rather than a literal 256, because EndlessIDs grows the array. Keep the order invisible ->
+soulstealing -> resistance and the start id, and this reproduces ids 70/71/72 exactly — which is what this pack's
+worlds already contain (E.6). **Acceptance test:** the game-test mod asserts the three ids are 70/71/72 under the
+stock config, so a reorder fails CI instead of a save.
+
+This exact logic currently ships as a third-party Mixin (`FuzziTweaks`,
+`ArtificeEnchantsMixin#fuzziTweaks$findFreeEnchantID`) because it was the only way to patch a released mod. Moving
+it in-tree is what lets that mixin be deleted — which the namespace migration requires anyway (§0.1, E.3).
+
+**Status: fixed on `refactor/1.1.6`.** `ArtificeEnchants.initEnchants` now allocates the way the mixin did — a
+verified-free id per enchantment, `Enchantment.enchantmentsList.length` read at run time, same order and start id,
+plus a `try`/`catch` that logs at error and leaves the field null instead of dying — and the four call sites ask
+`ArtificeEnchants.hasInvisible()` / `hasSoulstealing()` / `hasResistance()` (config flag *and* registration
+succeeded) instead of the config flag alone. The game test adds ids 70/71/72, "each enchantment occupies its own
+`enchantmentsList` slot" and "no two share an id". FuzziTweaks' side is branch `refactor/drop-artifice-mixin`.
+
+### 5.4 `MiscUtils` neighbour helpers index the side array twice — **retracted, not a defect**
 
 `util/MiscUtils.java:63-76` and `:85-98`.
 
@@ -444,24 +306,23 @@ for (int i$ = 0; i$ < len$; i$++) {
     ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[sides[i]];   // sides[sides[i$]] !
 ```
 
-This is a decompiler artefact of `for (int i : sides)`: the index is applied twice. The loop still runs six times,
-but it visits a permutation of a permutation — some sides twice, some never. Consequences:
+This is a decompiler artefact of `for (int i : sides)` - the index is applied twice - but **the original analysis
+was wrong**: it claimed the loop visits "a permutation of a permutation, some sides twice, some never". It does not.
+`sides` is a bijection of `0..5`, so `{sides[sides[j]] : j}` is the image of a bijection over the complete set, which
+is the complete set. Every side is visited exactly once; only the *order* differs, and the order was randomised on
+purpose. There is no energy loss and no unreachable furnace.
 
-* `TileEntityHeatingCoil` and `TileEntityNuclearBattery` push energy into a random, incomplete subset of
-  neighbours (energy is silently lost when a receiver is never visited).
-* `MiscUtils.getHeatReceiverNeighbor` can fail to find an adjacent furnace at all, so the heating coil sometimes
-  does nothing.
+Verified rather than argued: on the pre-fix code, both new tests below still pass (a `provideEnergyToNeighbors`
+sweep over six receivers gets six distinct sides, and a lone furnace above a coil still gets heat on 200 consecutive
+draws), and the in-game "coil heats the furnace in each direction" check passes on all six sides. A defect that no
+test can distinguish from correct behaviour is not a defect.
 
-Fix:
+Kept anyway, as readability: the `arr$`/`len$` decompiler scaffolding is gone and both helpers are a plain
+`for (int side : sides)`, which removes the thing that made this look wrong in the first place.
 
-```java
-for (int i : sides) {
-    ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[i];
-    ...
-}
-```
-
-Acceptance test: the game-test "every furnace around a coil burns" assertion, currently a `knownBug` probe.
+Tests added while checking it, worth keeping as properties even though they do not pin a bug:
+`MiscUtilsTest.provideEnergyToNeighborsVisitsEverySideExactlyOnce`, `.getHeatReceiverNeighborFindsAReceiverOnAnySide`,
+and the in-game per-direction furnace check in `checkHeatingCoil`.
 
 ### 5.5 `MiscUtils.getAdjoinedTileEntities` flood fill is depth 1 — **P1**
 
@@ -496,6 +357,23 @@ if (list.isEmpty()) { it.remove(); }   // inside doGeneration
 
 Also `doGeneration` returns `true` unconditionally, so the return value is currently meaningless.
 
+**Status: fixed on `refactor/1.1.6`.** The "am I finished?" decision is now one shared helper,
+`util/PendingChunks.hasWork(map)`: it drops the chunks whose pending list is empty and returns whether anything is
+left. All four generators (Cluster, Sulfur, Desert/Niter, Cave) return that from both of their `return true;`
+statements - the normal exit *and* the "neighbouring chunk is not loaded, come back later" exit - and each ensures
+the current chunk has a queue entry before touching it, so a drained-then-revisited chunk cannot NPE.
+
+`ArtificeTickHandler` no longer removes a generator from inside an iterator over that generator's own chunk set. The
+sweep is a static, unit-testable pair of methods (`tickSuspendableGenerators`, `tickDelayedGenerators`): peek the
+head, generate one chunk, dequeue when it reports done, and drop a generator whose chunk set is empty *without*
+calling into it. A delayed generator is polled before it runs, so a generator that throws is not retried forever.
+
+Tests: `PendingChunksTest` pins the pruning (drained chunk stops counting and leaves the map, live chunks survive,
+null lists, idempotence, the key set actually shrinking) - four of its seven tests fail against a `hasWork` that only
+checks `isEmpty()`. `ArtificeTickHandlerTest` pins the queue behaviour with fake generators: done leaves the queue,
+suspended stays, one chunk per sweep, an empty generator is dropped without being run, order is head-first, delayed
+generators run one per sweep.
+
 ### 5.7 `BlockFrameScaffold.checkStay` gives up on the first scaffold neighbour — **P2**
 
 `block/frame/BlockFrameScaffold.java:180-202`:
@@ -521,12 +399,38 @@ height bound; it relies on `getBlock` above y=255 returning something non-null. 
 `isRooted` (`:205-225`) walks from `y-1` down to bedrock on every neighbour change — for a tall scaffold tower
 that is O(256) per placement and per neighbour update. See §6.
 
+**Status: fixed on `refactor/1.1.6`** — `return false` is now `continue`, and the climb in `onBlockClicked` is
+bounded at `y < 256`.
+
+The analysis was right about the mechanism but wrong about how often it bites, and the test proved it: an
+**anchored neighbour of the same tier** was already rescued by the radius search that runs inside the same
+iteration (`c.getRadiusMatches(...)` scans a cube of `overhang` around the block, so a direct neighbour is always
+in it). The observable case is a scaffold neighbour of a **different tier**: `t.blockEquals(...)` is false, so the
+radius search never runs, and the `return false` ends the search before the loop reaches the anchored side. Two
+scaffolds of different metals side by side, one of them floating, is enough to drop a block that had a good anchor.
+
+The in-game test places exactly that: stone, a same-tier anchored scaffold to the SOUTH, the floating block,
+then an other-tier scaffold to the NORTH - which is the placement that notifies the floating block. Old code: the
+block is gone (`got BlockAir`). New code: it stays, `canBlockStay` agrees, and removing the anchor's ground still
+drops it.
+
 ### 5.8 `BlockLogicRedstone.canConnectRedstone` uses the wrong side table — **P2**
 
 `block/functional/BlockLogicRedstone.java:150-168` maps `side → sides[…]` with a hand-written table
 (`-1→1, 0→2, 1→5, 2→3, 3→4`), while `isProvidingWeakPower` (`:133`) uses `ForgeDirection.OPPOSITES[side]`
 (`0→1, 1→0, 2→3, 3→2, 4→5, 5→4`). The two disagree, so the block can render a redstone connection on a face it
 does not actually read or emit on. Use `ForgeDirection.OPPOSITES[side]` in both.
+
+**Status: fixed on `refactor/1.1.6`.** `canConnectRedstone` now reads `sides[OPPOSITES[side]]`, the same expression
+`isProvidingWeakPower` uses, so the face that renders a connection is the face that emits. The unknown-direction
+call (`side == -1`, which vanilla and several wire mods use to ask "do you connect at all?") returns true when any
+face is configured instead of silently answering for the UP face, and an out-of-range side no longer indexes off
+the end of the array.
+
+The in-game test sets one POSITIVE and one OUTPUT face and asserts, for all six directions, that
+`canConnectRedstone(side)` agrees with `sides[OPPOSITES[side]]` - plus the specific UP/NORTH cases and the `-1`
+query. Against the old table, 3 of those fail (DOWN and UP both report no connection, and the "connects upward"
+assertion fails).
 
 ### 5.9 `BlockOre` dereferences a possibly-absent ore-dictionary entry — **P2**
 
@@ -536,6 +440,16 @@ does not actually read or emit on. Use `ForgeDirection.OPPOSITES[side]` in both.
 silk touch, or `createStackedBlock`. GTNH packs usually have all of these, but a "no IC2/ores" pack will crash.
 
 Fix: null-check and fall back to `Item.getItemFromBlock(this)` / the block's own drops.
+
+**Status: fixed on `refactor/1.1.6`.** The fallbacks live in `util/OreDictFallback` (`item`, `blockStack`, `meta`) and
+all four paths in `BlockOre` go through them: `getItemDropped`, `damageDropped`, `getExpDrop` and
+`createStackedBlock`. With no dictionary entry the ore drops as itself, which is recoverable, rather than throwing.
+
+Pinned where it can be: `OreDictionary.getOres(...)` hands out an immutable list in this Forge version, so an ore
+cannot be unregistered in-game to drive the null path through the block. The in-game test drives the helpers with a
+null entry (the exact state the old code dereferenced) for all 15 ore types, and separately asserts that
+`BlockOre#getItemDropped` really does route through the entry for a registered ore, so the wiring is covered even
+though the null branch is pinned one level in.
 
 ### 5.10 `TileEntityLogic.readFromNBT` indexes the sides array unchecked — **P2**
 
@@ -551,6 +465,10 @@ A tile entity written by an older build, by a world-editing tool, or after a fut
 `ArrayIndexOutOfBoundsException` during chunk load. Fix: length-check, clamp, default to `DISABLED`.
 
 Acceptance test: `TileEntityLogicNbtTest.readToleratesAMissingSidesTag` (`@Ignore`d today).
+
+**Status: fixed on `refactor/1.1.6`.** The read is length-checked and range-checked per slot: a missing key, a short
+array, an empty array and an out-of-range ordinal all fall back to `DISABLED`, which is what a fresh tile entity
+has. Four tests: missing, short, out-of-range (including `-1`, `99` and `Integer.MAX_VALUE`) and empty.
 
 ### 5.11 `ArtificeCreativeTab` overrides client-only methods without `@SideOnly` — **P2**
 
@@ -570,7 +488,20 @@ browsers, recipe dumpers) that touches the tab list will hit it. Fix: annotate t
 the whole class) `@SideOnly(Side.CLIENT)`, and guard `getTabIconItem`'s callers.
 
 Note also that `getTranslatedTabLabel()` returns the raw label, so the tab is not localised — `itemGroup.*` keys
-in the lang file are unused.
+in the lang file are unused. (There are no `itemGroup.*` keys in this mod's lang files, so returning the raw label
+displays correctly; wiring up translation would need those keys first, so it is left alone.)
+
+**Status: fixed on `refactor/1.1.6`.** `getTabIconItem`, `getTranslatedTabLabel` and `displayAllReleventItems` now
+carry `@SideOnly(Side.CLIENT)`, matching the members they override.
+
+The old game-test probe was a **false negative** and is replaced. It checked `CreativeTabs.getDeclaredMethods()` for
+`displayAllReleventItems` and reported "still present", which looked like the premise was wrong. It is not: on the
+dedicated server run, `CreativeTabs` does not declare the method, and with the annotations in place neither does
+`ArtificeCreativeTab` — the transformer strips both. So the assertion is now *absence*: on a server, an
+unannotated override survives into the jar as a new method and shows up in `getDeclaredMethods()`, and an annotated
+one does not. The annotations themselves are asserted in a plain-JVM test, where stripping does not apply:
+`ArtificeCreativeTabTest` reflects over every `ArtificeCreativeTab` method that matches a client-only `CreativeTabs`
+member and requires the same annotation (2 of its 3 tests fail without the annotations).
 
 ### 5.12 Off-by-one bounds checks in `getIcon` — **P2**
 
@@ -580,7 +511,7 @@ the end:
 | File | Line | Expression | Consequence |
 |---|---|---|---|
 | `block/world/BlockFlora.java` | 38 | `meta > flora.length` | `meta == 5` → AIOOBE (5 is not a valid meta anyway, but it comes from NBT) |
-| `block/decorative/BlockLamp.java` | 105 | `meta > 15` | `meta == 16` → AIOOBE on a corrupt save |
+| `block/decorative/BlockLamp.java` | 105 | `meta > 15` | nothing - `getIcon` ignores metadata entirely, so the clamp is dead code (see below) |
 | `block/frame/BlockFrameBlastWall.java` | 52 | `meta > tiers.length` | `meta == 4` → AIOOBE |
 | `block/frame/BlockFrameGlassWall.java` | 61 | `meta > tiers.length` | same |
 | `block/frame/BlockFrameScaffold.java` | 73 | `meta > tiers.length` | same |
@@ -589,6 +520,21 @@ the end:
 `BlockFrameScaffold.getIcon(IBlockAccess, …)` (`:83`) is worse: it indexes `sideIcons[access.getBlockMetadata(…)]`
 with no check at all. `ItemUpgrade`/`ItemCoin`/`ItemNugget`/`ItemSteel` have no check either. A single helper
 (`ArrayUtils.getOrDefault(array, meta, fallback)`) would remove the whole class of bug.
+
+**Status: fixed on `refactor/1.1.6`** with `util/ArrayUtils.getOrFirst(array, index)` (clamp to the first entry)
+and `getOrDefault(array, index, fallback)`. Sites: `BlockFlora.getIcon`, `BlockFrameScaffold.getIcon` (both forms -
+the `IBlockAccess` one now clamps the side-icons lookup too), `BlockFrameBlastWall`/`BlockFrameGlassWall`'s
+`IBlockAccess` forms (they double-clamped; now they just delegate), `ItemDye`, `ItemUpgrade`, `ItemCoin`,
+`ItemNugget`. `ArrayUtils` is null-safe and empty-safe, so a table that failed to register icons returns `null`
+instead of throwing.
+
+One correction to the table: `BlockLamp` was listed as an AIOOBE, but its `getIcon(int, int)` returns `this.icon`
+and ignores metadata, so the `meta > 15` clamp it performs is dead code rather than a bug. Not changed - the clamp
+is harmless and its `IBlockAccess` form just forwards. `ItemSteel` was also listed as unchecked; it branches on
+`meta == 0` and never indexes, so it is fine.
+
+Tests: `ArrayUtilsTest` (8 cases: in range, one past the end, negative, `Integer.MAX_VALUE`, null array, empty array,
+null fallback, and a loop over every index of a table).
 
 ### 5.13 `BlockRock` registers the paver texture as the antipaver texture — **P2 (visual)**
 
@@ -601,6 +547,12 @@ this.icons[4] = TextureHandler.getConnectedTexture(this, 3, 0).icon;   // 3 == p
 
 `BlockRockSlab` does it correctly (`:114-121`), so the antipaver *block* face uses the paver icon while the
 antipaver *slab* uses the antipaver icon. One-character fix.
+
+**Status: fixed on `refactor/1.1.6`** (the index is 4). Not covered by a test: icons only exist client-side, and the
+in-game harness runs a dedicated server. Recorded here as a read-the-code fix.
+
+The second half of this item - `BlockRockSlab` only registering the CTM pair when a rock with that name exists, so
+`icons[2]`/`icons[3]` can stay null - is untouched.
 
 Also `BlockRockSlab.registerBlockIcons` (`:110-124`) only registers the paver/antipaver CTM **if** a matching rock
 is found by `unlocalizedName.contains(name)`; otherwise `icons[2]`/`icons[3]` stay null and `getIcon` NPEs later.
@@ -622,6 +574,14 @@ Register unconditionally.
   internally guarded by `isRemote`, but `setBlockToAir` is not, so the client runs a redundant block change on
   every harvest. Harmless, but it produces client-side block-update churn in large fields.
 
+**Status: fixed on `refactor/1.1.6`.** The window is inclusive on both axes, both damage calls are
+`Math.max(1, count / n)` (a harvest always costs something), and the plant branch only changes blocks when
+`!world.isRemote`. The leaf branch is otherwise unchanged: deleting every leaf in range is the sickle's job, and the
+`harvestBlock`-then-`setBlockToAir` pair is what makes that work for leaves that refuse harvesting.
+
+Game test: a 3×3 tallgrass field with a wood sickle (radius 1) harvests exactly the centre plus the four orthogonal
+neighbours and leaves the four corners, and costs 2 durability. Old code harvests 3, leaves 6, and costs 1.
+
 ### 5.15 `ItemSledge` scoops recipes by matching the *unlocalised* name — **P2**
 
 `item/ItemSledge.java:172-186`: a recipe is considered "the recipe for this drop" when
@@ -633,6 +593,15 @@ variant. Worse, the method returns the **first** match in the recipe list, so lo
 Prefer `ItemStack.isItemEqual` + `OreDictionary`-aware comparison, and skip recipes whose output has subtypes
 unless the damage matches (the code already half-does this).
 
+**Status: fixed on `refactor/1.1.6`** — the loop now matches on `output.isItemEqual(input)` instead of the
+unlocalised name, skips recipes with a null output (which `RecipeBox` used to be, §5.18), and no longer relies on
+`getHasSubtypes` to fake a damage comparison.
+
+Honest about the testing: a name collision needs a mod-provided recipe to demonstrate, so the in-game test guards
+the path that has to keep working instead - a crafting table unsmelts into exactly four planks, and stone still
+yields its own cobblestone rather than some recipe's result. The stricter comparison is the fix; the test is the
+leash.
+
 ### 5.16 `BlockFlora.updateTick` never calls `super` — **P2**
 
 `block/world/BlockFlora.java:57-66` overrides `updateTick` and does the day/night swap but never calls
@@ -643,6 +612,12 @@ a neighbour update.
 
 Also `getIcon` uses `>` (see 5.12) and `getSubBlocks` excludes the closed lotus deliberately.
 
+**Status: fixed on `refactor/1.1.6`** — the override now calls `super.updateTick` after the day/night swap.
+
+Game test: a flower whose soil was removed with **no** neighbour notification (flags `0`, so nothing else can remove
+it) survives until `updateTick` runs, and is gone afterwards. Without the super call it survives the tick too - which
+is what the test showed against the old code for all three flammable subtypes.
+
 ### 5.17 `BoxCraftingHandler` NPEs on an empty box — **P2**
 
 `recipe/BoxCraftingHandler.java:41`: `NBTTagCompound tag = slot.getTagCompound();` with no null check. An empty
@@ -650,6 +625,15 @@ box (crafted, or emptied by right-click) has no NBT; using it in any crafting re
 `ItemCraftedEvent` while it sits in the grid throws. Guard with `if (tag == null) continue;`.
 
 `ItemBox.onItemRightClick` has the same pattern (`item/ItemBox.java:87`) but is guarded by `if (tag != null)`.
+
+**Status: fixed on `refactor/1.1.6`** — a null tag and a stored item id that no longer resolves both skip the slot.
+
+**Fixing it uncovered a worse bug in the same method: the box's contents were being destroyed.** The non-sneak path
+only ever produced an output stack when the contents overflowed a max stack (`if (thing.getMaxStackSize() < size)`),
+and the sneaking path computed `num * size - numPer`, which is zero for a single box. So crafting with a filled box -
+the normal way to empty one - consumed the box and gave back **nothing** at all. It now hands over
+`boxes * damage` items in max-stack chunks, using the same shape as the right-click path in `ItemBox`, which was the
+working reference all along. That is a data-loss fix that was hiding behind the NPE.
 
 ### 5.18 `RecipeBox` / `RecipeUpgrade` return a null `getRecipeOutput()` — **P2**
 
@@ -662,6 +646,12 @@ handlers do not always check.
 Fix: keep a separate `defaultOutput` field (or return `ArtificeItems.itemBox`'s empty stack) and never return
 `null`.
 
+**Status: fixed on `refactor/1.1.6`.** Both classes carry a `defaultOutput` (an empty box, an empty upgrade) and
+`getRecipeOutput`/`getCraftingResult` fall back to it, so a caller that never matched gets a real stack instead of
+null. The in-game test walks `CraftingManager` for both recipe types and asserts a non-null output with a non-null
+item - against the old code the group reports `threw java.lang.NullPointerException` (on the empty-box case, which
+runs first).
+
 ### 5.19 `BlockFrameDetector` keeps rescheduling itself — **P2 (lag)**
 
 `block/frame/BlockFrameDetector.java:60-87`. Every neighbour change schedules a 2-tick update; `updateTick`
@@ -671,11 +661,42 @@ happens to stop at meta 2. With a redstone dust line adjacent, each notification
 on the dust and on the detector, which re-schedules. This is the classic 1.7.10 neighbour-update storm; wrap the
 notification in a metadata-changed check and only notify on an edge (0→1, 1→2), not on every tick.
 
+**Status: fixed on `refactor/1.1.6`, and the fix needed one more thing than "notify on an edge".** Only notifying on
+the two power edges is not sufficient on its own: a neighbour that reacts to the falling edge notifies back, and if it
+did so after we were idle again we would simply re-arm. The pulse therefore keeps three states - `META_IDLE`,
+`META_ACTIVE` (the only one that emits power) and `META_TAIL` - and the tail is the point. The falling edge is written
+while we are active, so the proactive metadata write (flag 1) tells the neighbours, and any echo they send back finds
+us in `META_TAIL` and is dropped; the tail then returns to idle with a **silent** write (`FLAGS_SILENT`, flag 2 -
+clients only, no block update), so nothing is left to re-arm. The explicit
+`notifyBlocksOfNeighborChange` call is gone: the flag already notifies, and calling both meant three notifications per
+pulse, one of them arriving with the power already off.
+
+Two smaller hardenings came with it: `onNeighborBlockChange` compares the neighbour by identity (`neighbor == this`
+instead of `neighbor.equals(this)`, which NPEs on a null neighbour) and refuses to arm while a pulse is in flight; and
+corrupt metadata (3-15 from an older save) now heals to idle instead of falling through to the "else" branch.
+
+Tested at both levels. `BlockFrameDetectorTest` pins the three-state table, the two power edges, the heal path and
+that one pulse is three steps with one powered step. The in-game `detector pulse` test
+(`ServerGameTests:checkDetectorPulse`) puts a `NeighborProbe` - a test-only block that echoes every neighbour change
+back, which is exactly what dust does - next to the detector, drives the cycle by hand and counts the world's pending
+scheduled updates: **32 transitions on the old code, 3 now**, ending idle with nothing scheduled.
+
 ### 5.20 `BlockLamp.onNeighborBlockChange` schedules unconditionally — **P2 (lag)**
 
 `block/decorative/BlockLamp.java:136-140` schedules a 2-tick update for *any* neighbour change, including the
 `setBlockMetadataWithNotify` the lamp itself performs. Combine with 5.19 and a lamp wall becomes a permanent
 ticking machine. Check whether the computed power actually differs before scheduling.
+
+**Status: fixed on `refactor/1.1.6`.** `targetMetadata(int indirect, int direct)` is now one helper - the old code
+spelled the same two queries out in two branches, which is why there was no way to ask "would this change anything?" -
+and `onNeighborBlockChange` returns early when the target already equals the metadata, and when the neighbour is the
+lamp itself. `updateTick` is unchanged in effect (write only on a difference) but now reads through the helper, and the
+literal `2` became `tickRate`. The inverted lamps get the same path, since only the light mapping differs.
+
+Tested by `BlockLampTest` (the helper's max-of-two semantics, exhaustively over 0-15 × 0-15) and by the in-game
+`lamp stability` test, which asserts the two things that were wrong: a lamp whose power cannot change schedules
+nothing, and a lamp that does change runs **one** tick and leaves nothing scheduled. Against the old code the first
+assertion fails immediately (one pending update where there should be none) and the second reports two ticks.
 
 ### 5.21 Machine config values are unvalidated and one is an integer divisor — **P2**
 
@@ -697,12 +718,31 @@ furnace throw `ArithmeticException: / by zero`. A negative value inverts the fur
 Clamp every machine value when the config is read (`Math.max(1, …)` for the divisors/rates, `Math.max(0, …)` for
 `coilLoss`), and log the clamp once so the user knows their config was adjusted.
 
+**Status: fixed on `refactor/1.1.6`, and the config surface is now testable.** `ArtificeConfig.initCommon` was split
+into a file-loading wrapper plus `readCommon(Configuration)`, which is package-private and takes an already-loaded
+config - so the whole 149-key surface can be read in a plain JVM. Machine values are clamped where they are read:
+`RFperFurnaceHeat >= 1` (the divisor), `nuclearBatteryCapacity >= 1`, and `nuclearBatteryRate`, `heatingCoilRate`
+and `coilLoss` `>= 0`. Height ranges get the same treatment, because they feed `rand.nextInt(max - min + 1)`: every
+`rockLayers`/`rockClusters`/`rockCaves` min/max pair and the ender/uranium pair get `max = Math.max(min, max)`, so an
+inverted range cannot throw out of worldgen.
+
+No log line for the clamp itself: the value in the file is what the user sees, and warning on every load for a value
+they may have set deliberately is noise. `ArtificeConfigTest` (5 cases) reads a hostile configuration (0, negatives,
+inverted ranges) and asserts the invariants, reads a default one and asserts the documented defaults, and reads twice
+to prove the clamps do not accumulate. Against unclamped code, the divisor test fails with 0.
+
+The battery's missing charging path (§5.27) is untouched - see there.
+
 Also: the battery has **no charging path** — `updateEntity` only ever extracts. The only energy it will ever hold
 is the `charge` NBT stamped on the crafted item (§5.27). Worth deciding whether that is intended.
 
 ### 5.22 `ArtificeRegistry` logs through a possibly-null logger — **P2**
 
-`ArtificeRegistry.java:28, 86, 161, 173, 184` call `ArtificeCore.logger.info(...)` unconditionally. `logger` is
+`ArtificeRegistry.java:28, 86, 161, 173, 184` call `ArtificeCore.logger.info(...)` unconditionally.
+
+**Status: fixed on `refactor/1.1.6`** — a private `logInfo` helper null-checks the logger once, and the five call
+sites go through it. Not tested: it needs another mod to call in before Artifice's `preInit`, which is a load-order
+scenario the harness cannot produce. The change is a one-line guard, read and reviewed rather than executed. `logger` is
 assigned in `ArtificeCore.preInit`, but `ArtificeRegistry` is a public entry point that other mods may call from
 *their* `preInit`, which may run before Artifice's. Also `ArtificeConfig.setStoneList` calls it during Artifice's
 own preInit (after the assignment, so that path is fine). Guard with a null check or assign the logger in a static
@@ -717,6 +757,11 @@ Fix the comment (and consider `Name@Meta` to match the IMC format used by `compa
 Related: `setDimBlacklist` (`:487-499`) splits `""` into `[""]`, fails `Integer.parseInt("")` and logs
 `"Failed to load the dimension blacklist"` on **every fresh install**. Skip empty input.
 
+**Status: fixed on `refactor/1.1.6`.** Both comments now describe the parser (`Name;Meta`, comma separated) and name
+the example format; `parseDimensionList` and `parseStonePairs` are pure helpers that skip blanks and tolerate
+whitespace. The warning is only logged when a configured entry actually failed to parse, so a fresh install is
+silent. `ArtificeConfigTest` covers empty, blank, null, junk, doubled commas and a pair with no separator.
+
 ### 5.24 Config is loaded twice per side — **P3**
 
 `ArtificeCore.preInit` calls `ArtificeConfig.initClient(evt)` *and* `initCommon(evt)`, each of which constructs
@@ -724,12 +769,22 @@ its own `Configuration` over the same file and calls `load()`+`save()`. It works
 is four file writes per launch, and `initClient` runs on the server where the `Client` category is meaningless.
 Fold the client keys into `initCommon` (or guard `initClient` with `FMLCommonSetupEvent`/side check).
 
+**Status: fixed on `refactor/1.1.6`** — the three `Client` keys are read by `readCommon`, so there is one
+`Configuration` and one save per side. `initClient` is an empty deprecated stub for binary compatibility with
+anything that called it. `ArtificeConfigTest.clientKeysAreReadByTheCommonPass` asserts both the default and that the
+key is honoured.
+
 ### 5.25 `ArtificeEnchants` cannot distinguish "disabled" from "failed" — **P3**
 
 `ArtificeEnchants` only logs a warning when it cannot allocate an id. Combine with 5.3 and the config flags are
 misleading: `enchantmentSoulstealingEnable == true` does not imply `enchantmentSoulstealing != null`. Either
 expose a `isSoulstealingAvailable()` helper and use it everywhere, or (better) fail the registration and clear
 the config flag.
+
+**Status: fixed on `refactor/1.1.6`** via the first option: `hasInvisible()`/`hasSoulstealing()`/`hasResistance()`
+answer "config flag *and* registration succeeded", and every use site asks them (§5.3's fix). The config flag is
+left untouched on purpose - rewriting a user's config file to disable an enchantment they asked for is a surprise,
+and the helper makes the flag's meaning unambiguous without it.
 
 ### 5.26 `EnchantmentResistance` armour damage picks a random piece — **P3**
 
@@ -746,6 +801,12 @@ regardless of the number of enchanted pieces. It also only terminates because so
 enchantment is on a slot the loop skips, it damages the wrong armour. Iterate the four slots and damage the ones
 that actually have the enchantment.
 
+**Status: fixed on `refactor/1.1.6`** — the loop walks slots 1..4 and damages every piece that carries the
+enchantment, so a hit wears the armour that is actually absorbing it.
+
+Game test: diamond helmet with resistance I plus a plain diamond chestplate, 20 magic hits. New code: 20 on the
+helmet, 0 on the chestplate. Old code: 16 and 4 - the random pick hit an unenchanted piece four times.
+
 ### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance)**
 
 `recipe/ArtificeRecipes.java:209-222` sets `"charge" = nuclearBatteryCapacity` on the recipe output, and
@@ -758,6 +819,9 @@ capacity default and the recipe cost should be revisited; if not, drop the NBT f
 `BlockFrameScaffold.java:89` returns `sideIcons[meta]` with the raw metadata (no bound check, see 5.12) while the
 `getIcon(int,int)` overload uses the masked value. Same idea in `BlockFrameGlassWall:61/68`.
 
+**Status: fixed on `refactor/1.1.6`** as part of §5.12: both `IBlockAccess` overloads now delegate to the
+`(int, int)` form, which clamps through `ArrayUtils.getOrFirst`.
+
 ### 5.29 `ItemBlockSlabArtifice` tooltips never match — **P3**
 
 `block/decorative/ItemBlockSlabArtifice.java:85` builds the key from `stack.getUnlocalizedName()` (a
@@ -765,9 +829,17 @@ capacity default and the recipe cost should be revisited; if not, drop the NBT f
 `(Item, damage)` registry identity. The lookup can never hit. Use `new NameMetaPair(stack.getItem(), damage)`, as
 `ItemBlockArtifice` does.
 
+**Status: the tooltip half is fixed on `refactor/1.1.6`** — the lookup uses
+`new NameMetaPair(stack.getItem(), damage)` like the other item blocks. Game test: the four paver/antipaver slab
+metas resolve under their registry identity, and the unlocalised-name key the item block used to build is asserted
+to be a different key (i.e. the old lookup could not have matched).
+
+The `getHalfSlab`/`getDoubleSlab` half is **not** done. It is a refactor of working code and belongs with §7.3
+(registry names as constants) rather than as a drive-by change here.
+
 Also, `getHalfSlab`/`getDoubleSlab` (`:26-88`) resolve the slab by substring-matching the unlocalised name
 (`contains("gray")` after `contains("lightgray")`, …). It works today but breaks the moment a name changes, and it
-is the kind of code a registry-name normalisation (§4.2) will silently break. Replace with a static map from
+is the kind of code a registry-name change would silently break. Replace with a static map from
 half-slab → double-slab built in `ArtificeBlocks`.
 
 ### 5.30 `FrameRenderer.getRenderId()` returns 0 — **P3**
@@ -777,7 +849,13 @@ half-slab → double-slab built in `ArtificeBlocks`.
 works, but `ISimpleBlockRenderingHandler#getRenderId` is part of the contract and is used by some tools/NEI
 plugins. Return `ArtificeConfig.frameRenderID`.
 
+**Status: fixed on `refactor/1.1.6`.** Not tested: the renderer is client-only and the harness is a dedicated
+server.
+
 ### 5.31 `OreRenderer` uses a mutable static as render state — **P3**
+
+**Status: not changed.** It is a client-render refactor with no server-side observable and no test that can hold
+it honest; the review's own framing is "prefer", and doing it blind risks the ore rendering for no verified gain.
 
 `render/OreRenderer.java:82` reads `ClientProxy.renderPass`, which `BlockOre.canRenderInPass` writes as a side
 effect. It works because the render pass is single-threaded, but it makes the renderer non-reentrant and is the
@@ -786,22 +864,35 @@ reason `BlockOre.getRenderBlockPass()` returns `1` for both passes. Prefer passi
 
 ### 5.32 `BlockEnderOre.getItemDropped` and friends ignore metadata — **P3**
 
+**Status: not changed.** The methods are harmless (they return the same thing the inherited ones would) and
+removing them cannot be verified by any test here; it is cosmetic cleanup for §7.
+
 `block/world/BlockEnderOre.java` has no metadata subtypes, yet `getDamageValue`/`damageDropped`/`getDrops` are
 defined as if it did. Harmless, but it is copy-paste from `BlockSulfur`, and it hides the fact that the glowing
 variant drops the same item (which is correct).
 
 ### 5.33 `WorldGenCluster`/`WorldGenCave` mutate the generator instance per biome — **P3 (thread safety)**
 
+**Status: not changed.** The concern is real but conditional: 1.7.10 chunk generation runs on the server thread
+unless a mod offloads it, and the fix means threading the chosen block through `ClusterGen`/`CaveGen` - a worldgen
+edit with no test that can catch a mistake. It is better done as part of the §7.1 dedupe, where the two generators
+become one and the mutation disappears by construction.
+
 `world/WorldGenCluster.java:95-112` and `world/WorldGenCave.java:109-126` assign `this.block` while choosing a
 limestone variant from the biome. `IFeatureGenerator`s are shared across chunk-generation threads in 1.7.10
 (CoFH's `WorldHandler.generateWorld` may be called from the chunk populator), so two chunks generating
 concurrently can swap each other's stone type mid-blob. Use a local variable and pass it to `ClusterGen`.
 
-### 5.34 `ArtificeBlocks` registers slabs with `getUnlocalizedName()` — **P3, but see §4**
+### 5.34 `ArtificeBlocks` registers slabs with `getUnlocalizedName()` — **P3**
 
 `ArtificeBlocks.java:194, 210`: `blockBasalt.getUnlocalizedName() + ".slab"` embeds `tile.` twice in the registry
 name (`Artifice:tile.artifice.basalt.slab`). It also couples the registry name to the *localisation* key. Give
 slabs an explicit registry name.
+
+**Status: not doing this.** It is a registry-name change, and §4 decided that registry names are frozen: every
+`Artifice:tile.artifice.*` string is inside the CoFH retrogen hashes (E.8) and in pack configs (E.7). The coupling
+to the unlocalisation key is ugly, but it is also *stable*, which is the property that matters here. Recorded as a
+deliberate no.
 
 ### 5.35 The `/calc` command is registered but non-functional — **P3**
 
@@ -809,6 +900,10 @@ slabs an explicit registry name.
 (`:44-46`), so `/calc 1+1` prints `1+1 = ` and nothing else. `canCommandSenderUseCommand` returns `true`
 unconditionally (no permission check). Either restore the evaluator (it needs the `fathzer:javaluator`
 dependency) or delete the command — currently it is an untested, broken command exposed to every player.
+
+**Status: deleted on `refactor/1.1.6`** — `CommandCalc`, its registration, and its three lang keys are gone. It
+printed `1+1 = ` and nothing else, and every player could run it. Restoring it is a two-line diff plus the
+dependency if anyone wants it back; a broken command is worse than no command.
 
 ### 5.36 The sneak-tracking protocol is fragile — **P3**
 
@@ -824,6 +919,15 @@ server and client can disagree for a tick; (c) `ArrayList` plus `contains` on a 
 `EntityPlayer#isSneaking()` on the server (it is synced every tick in 1.7.10 — `EntityPlayerSP`/`EntityPlayerMP`
 both track it) and delete the packet entirely.
 
+**Status: the decision path is fixed on `refactor/1.1.6`; the protocol is still there.** `BoxCraftingHandler` now
+asks `player.isSneaking()`, which removes (a) and (b) from the only place that decides behaviour. The game test sets
+`player.setSneaking(true)` instead of adding an id to `Tracking.sneaks`.
+
+The packet, its handler, the client tick handler and `Tracking.sneaks` are now unused for behaviour but still
+registered. Deleting them is a network-identity change and is left as a follow-up rather than folded into a
+behaviour fix: the review's reasoning ("delete the packet entirely") is right, it just deserves its own commit and a
+client run to confirm nothing else subscribed.
+
 ---
 
 ## 6. Performance
@@ -837,7 +941,7 @@ both track it) and delete the packet entirely.
 | `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. |
 | `world/WorldGenLayer.java:36-90` | Scans the full 16×16×height band and does two `NameMetaPair` hash lookups per block. At the default basalt layer (0–10) that is ~2.8k blocks/chunk; if a user configures a tall layer it is 65k. | Skip blocks that are air first, and use a single `getBlock`+`getBlockMetadata` pair (already done) but early-out on `isAirBlock` before building the pair. |
 | `util/MiscUtils.java:63-98` | Called per coil/battery per tick; builds and shuffles a 6-element `Integer[]` each call (two allocations + boxing). | Use a static `int[]` rotated by a random start index instead of shuffle+boxing. |
-| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load, but `EE3`/`Forestry`/`Carpenters` use reflection per call. | Only relevant if those methods are hot; they are load-time only. |
+| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. |
 | `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path; leave alone, but see §7. |
 
 ---
@@ -903,18 +1007,29 @@ static int rollsThisChunk(Random rand, int frequency) {
 
 Bonus: this becomes a pure, unit-testable function — exactly the kind of thing the new JUnit suite should own.
 
+**Status: done on `refactor/1.1.6`.** `world/GenFrequency.rollsThisChunk(rand, frequency)` is now the only copy;
+the eight generators call it. `GenFrequencyTest` pins the contract: 0 and negatives place nothing, 100 is exactly
+one per chunk, below 100 is the chance of one (1%, 25%, 50%, 99%), above 100 scales linearly (150 → 1.5,
+1550 → 15.5), 1500 is exactly 15 and 1900 exactly 19 (the saturation the review described), the whole part is
+always present and never exceeded, and the function is seed-deterministic.
+
+One correction to the numbers above: `1500 % 1000 == 500` made the old extra-roll branch always true, so 1500
+produced 16 - and the "intended" 15.5 does not apply to it either, because `1500 / 100` is exactly 15. The
+half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
+"Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
+
 ### 7.3 Registry names as constants
 
 Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
 Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
-`setBlockName`/`registerBlock` pair. This is the prerequisite for §4.2 and makes `GameRegistry.findBlock` usable
+`setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
 for the first time.
 
 ### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method
 
 Split into `initRocks`, `initOres`, `initFrames`, `initDecorative`, `initFluids`, `initFunctional`, each with a
 static field group. The current method constructs ~120 blocks and registers ~40 of them in one go, which makes the
-registration order (and therefore the §4.3 block/item name coupling) very hard to reason about.
+registration order (and therefore the block/item name coupling) very hard to reason about.
 
 ### 7.5 The tooltip registry is 226 registration calls
 
@@ -977,13 +1092,21 @@ concrete risks: (a) a pack that counts ores (vein miner, ore-finder tools) sees 
 cascade with CoFH's retrogen. Strongly consider a config flag (`convertOtherModOres`, default on) and a per-ore
 log at debug level.
 
-### 9.2 Ore smelting recipes never register
+### 9.2 Ore smelting recipes never register — **fixed**
 
 `ArtificeRecipes.registerOreRecipes` (`:842`) runs in `init`, but the ore-dictionary entries for `blockOres` only
 appear in `postInit` (`ArtificeBlocks.registerOreVariants`). `ItemHelper.getOreName(stack)` therefore returns
 `"Unknown"` for every one of the 15×9 ore blocks and no smelting recipe is added. Move `registerOreVariants()` to
 `preInit` (after `initBlocks`), which also makes the ore dictionary complete before other mods' `init` runs — a
 compat improvement in itself.
+
+**Status: fixed on `refactor/1.1.6`** — exactly that move: `registerOreVariants()` is called from `preInit` right
+after `ArtificeBlocks.initBlocks()` and removed from `postInit`. `initOreSet()` (which collects *other* mods' ores)
+stays in `postInit`, where it belongs.
+
+The in-game test checks all 8 vanilla-mapped ores × 9 rock variants against the smelting registry (72 assertions).
+Against the old ordering it reports "the ore smelting recipes registered at all (1 ores)" - one ore was getting a
+recipe from a different code path, which is why the miss was easy to overlook.
 
 ### 9.3 `BlockFrame` hardness scales with metadata — including invalid metadata
 
@@ -1007,8 +1130,18 @@ the generation state is arbitrary. Cosmetic.
 
 `ItemBox` NBT uses `id` = `Item.getIdFromItem(item)` and `meta`. Numeric ids are **not stable across mod changes**
 in 1.7.10 (they depend on registration order), so a box in a chest can silently turn into a different item after a
-pack update. Storing the registry *name* (`"artifice:sledge.wood"`) is the robust fix, and it dovetails with §4.2.
+pack update. Storing the registry *name* is the robust fix, and it is the only form that survives a future
+rename.
 The same applies to `DispenserBehaviorBox` and `RecipeBox`.
+
+**Status: fixed on `refactor/1.1.6`.** `util/BoxContents` owns the format: `RecipeBox` writes `name` *and* the
+legacy `id`/`meta`, and every reader (`ItemBox` right-click and tooltip, `BoxCraftingHandler`,
+`DispenserBehaviorBox`) prefers `name` with the numeric id as a fallback, so boxes written by older versions keep
+working.
+
+Game test: the name is written; a stale numeric id loses to the name; an id-only box still resolves; a box naming an
+item the pack does not have resolves to null and is left alone instead of throwing; and a name-carrying box yields
+its contents through the crafting handler.
 
 ### 9.7 Fluids
 
@@ -1029,20 +1162,81 @@ fluids Artifice did not create.
   makes retro-generation cheap to add.
 * **The creative tab is not localised** (§5.11) and the lang file already has the keys.
 
+### 9.9 Consumers of the odd registry names: Chisel (and the general lesson)
+
+`tile.`-prefixed registry names are unusual, and third-party tables written against them get them wrong. Chisel's
+carving table is the worked example: it asks for `Artifice:artifice.marble`, which has never existed, so its
+marble/limestone integration has silently done nothing in every pack that has both mods (E.4). Nobody
+reported it because the failure is a null `findBlock` and an early return.
+
+Two takeaways:
+
+* If the names are ever normalised, do it as a compat change with a release of its own, not as drive-by tidying.
+* If Chisel support is wanted before then, it is cheaper to register the carving groups from our side, where the
+  real names are known, than to wait for another repo. Sketched in E.4.
+
 ---
+
+### 9.10 Reflection in production code
+
+Audited after the migration work, because reflection is the one thing a namespace change can break silently and
+because it is the only Java-level indirection in the mod.
+
+**Nothing in three of the four categories.** No Mixins (`usesMixins = false`, no `mixins.<modid>.json`, no
+SpongePowered imports, nothing in `dependencies.gradle`), no ASM or coremod (`coreModClass` empty, no
+`IFMLLoadingPlugin`/`IClassTransformer`), no access transformers (`accessTransformersFile` empty, no `*_at.cfg`, no
+`META-INF` at all).
+
+**Reflection: one site left, deliberately.**
+
+| Site | Was | Now |
+|---|---|---|
+| `compat/CarpentersBlocks` | `Class.forName("...FeatureRegistry").getField("coverExceptions")` | `compileOnly` on `CarpentersBlocks:3.7.3-GTNH`, direct `FeatureRegistry.coverExceptions` |
+| `compat/Forestry` | `Class.forName("forestry.api.apiculture.FlowerManager").getField("plainFlowers")` | `compileOnly` on `ForestryMC:4.12.1`, direct `FlowerManager.plainFlowers` |
+| `item/ItemSledge` | `ObfuscationReflectionHelper.getPrivateValue(ShapedOreRecipe.class, recipe, **3**)` | `recipe.getInput()` - the accessor is public in 1.7.10 Forge |
+| `compat/EE3` | `Class.forName("com.pahimar.ee3.init.ModItems")`, two static fields | **deleted** - see below |
+
+The sledge one was the worst of them: a **field index**, not a name, so any Forge field addition or reorder would
+have silently changed which field was read. `ShapedOreRecipe#getInput()` has been public since 1.7.10, so there was
+never a reason to reflect.
+
+**EE3 was deleted rather than converted.** It added 18 shapeless recipes (minium or philosopher's stone +
+cobblestone + a dye → each coloured marble/basalt/limestone variant), i.e. a transmutation shortcut for recolouring
+stone. Three things make it dead weight:
+
+* EE3 never left alpha for 1.7.10 - the last builds are 2014-2015 pre-releases, and the 1.7.10 equivalent people
+  actually run is **ProjectE**, which this pack has and EE3 it does not. The class could never execute.
+* There is no published deobfuscated artifact to compile against, so the only alternatives were reflection or
+  vendoring an API stub for an abandoned mod.
+* Artifice already does this mod-natively: the marble/basalt cycling chain (`stoneCycleRecipes`, `registerStoneType`
+  / `registerMarbleType` / `registerBasaltType`, driven by IMC) is the supported way to recolour these stones.
+
+If the transmutation recipes are ever wanted, they should be reimplemented as a typed **ProjectE** compat
+(`curse.maven:ProjectE-226410:2340786` is a known-good coordinate, already used by FuzziTweaks) rather than
+resurrected from reflection. Removing the class also dropped `after:EE3` from the `@Mod` dependency string.
+
+
+The two converted compat classes keep their `try`/`catch (Throwable)` and their `Loader.isModLoaded` gate: the
+`compileOnly` reference makes a version mismatch a `NoSuchFieldError` (an `Error`, not an `Exception`), and an
+optional integration must never take the game down. Their classes are constructed unconditionally in `preInit` but
+only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (77 tests, headless):** pure value types and algorithms — `BlockCoord` (89/188 lines), `ChunkCoord`
-  (19/24), `NameMetaPair` (18/34), `MiscUtils` (7/69), `HeatStorage` (20/20), `MinecraftColors` (43/43),
-  `FormatCodes` (26/26), `RomanUtil`, `XSRandom`, `EnumUpgrades`, `TileEntityLogic` (19/57), the packet codec
-  (15/15), plus the metadata-table invariants and the `@Mod`/`@Instance` agreement.
-* **In-game (1,442 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
-  membership, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold support, the logic
-  block truth table, the attuned frequency link, heating-coil → six-furnace transfer, nuclear-battery
-  charge round-trip, drops, recipe presence, tooltips, config surface.
+* **Unit (141 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+  `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
+  `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
+  surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, plus the metadata-table invariants and
+  the `@Mod`/`@Instance` agreement.
+* **In-game (1,696 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
+  anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
+  heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
+  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
+  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour).
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1059,71 +1253,69 @@ The remaining 95% is dominated by classes that cannot be instantiated without a 
 | Client/render | ~3,300 | client run only |
 
 Realistic headless ceiling with the current structure: **~12–15%**. Extracting the frequency helper (§7.2), the
-slab `getHalfSlab` map (§5.29) and the `remapName` helper (§4.3) would each add pure testable surface.
+slab `getHalfSlab` map (§5.29) would each add pure testable surface.
 
 ### 10.3 Next tests to add (in priority order)
 
-1. `remapName` (both the domain swap and the `tile.`/`item.` normalisation) — pure, and it is the thing that
-   protects worlds during §4.
-2. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
-3. The §7.2 frequency helper, once extracted.
-4. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
+1. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
+2. The §7.2 frequency helper, once extracted.
+3. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
    way).
-5. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
+4. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
 6. A game-test assertion that breaking an `oreIron` block yields an iron-ore item and drops XP (§5.9).
 
 ---
 
 ## Appendix A — Registry names currently emitted
 
-Derived from each class's `setBlockName`/`setUnlocalizedName` plus FML's `modId + ":"` prefixing. `Artifice:` is
-the domain today; the proposed column applies §4.2.
+Derived from each class's `setBlockName`/`setUnlocalizedName` plus FML's `modId + ":"` prefixing. These are the
+names the mod emits today, and the names §4 keeps.
 
-| Kind | Current registry name | Proposed |
-|---|---|---|
-| Rock | `Artifice:tile.artifice.basalt` | `artifice:basalt` |
-| Rock (limestone) | `Artifice:tile.artifice.limestone.gray` | `artifice:limestone.gray` |
-| Slab | `Artifice:tile.artifice.basalt.slab` | `artifice:basalt.slab` |
-| Double slab | `Artifice:tile.artifice.basalt.doubleslab` | `artifice:basalt.doubleslab` |
-| Stairs | `Artifice:tile.artifice.basalt.stairs.cobblestone` | `artifice:basalt.stairs.cobblestone` |
-| Frame | `Artifice:tile.artifice.frame` | `artifice:frame` |
-| Detector | `Artifice:tile.artifice.detector` | `artifice:detector` |
-| Blast wall | `Artifice:tile.artifice.reinforced` | `artifice:reinforced` |
-| Glass wall | `Artifice:tile.artifice.glasswall` / `…glasswalldark` | `artifice:glasswall` / `…glasswalldark` |
-| Scaffold | `Artifice:tile.artifice.scaffold` | `artifice:scaffold` |
-| Steel block | `Artifice:tile.artifice.steel` | `artifice:steel_block` |
-| Lamp | `Artifice:tile.artifice.lamp.white` … (16 + 16 inverted) | `artifice:lamp.white` … |
-| Coloured torch | `Artifice:tile.artifice.coloredtorch0` … `15` | `artifice:torch.colored0` … |
-| Flora | `Artifice:tile.artifice.flora` | `artifice:flora` |
-| Lotus | `Artifice:tile.artifice.flora.lily` | `artifice:lotus` |
-| Ore | `Artifice:tile.artifice.orecoal` … (15, plus `.glowing` for redstone/ender) | `artifice:ore.coal` … |
-| Sulfur | `Artifice:tile.artifice.sulfur` | `artifice:sulfur` |
-| Niter | `Artifice:tile.artifice.niter` | `artifice:niter` |
-| Ender ore | `Artifice:tile.artifice.enderore` (+ `.glowing`) | `artifice:enderore` |
-| Uranium | `Artifice:tile.artifice.uranium` | `artifice:uranium` |
-| Glow sand | `Artifice:tile.artifice.glowsand` | `artifice:glowsand` |
-| Charred log | `Artifice:tile.artifice.charredlog` | `artifice:charredlog` |
-| Tephra | `Artifice:tile.artifice.tephra` | `artifice:tephra` |
-| Attuned | `Artifice:tile.artifice.attunedredstone.transmitter` / `.receiver` | `artifice:attuned.transmitter` / `.receiver` |
-| Logic | `Artifice:tile.artifice.logicredstone` | `artifice:logicredstone` |
-| Nuclear battery | `Artifice:tile.artifice.nuclearbattery` | `artifice:nuclearbattery` |
-| Heating coil | `Artifice:tile.artifice.heatingcoil` | `artifice:heatingcoil` |
-| Fluid block | `Artifice:tile.artifice.fluid.oil` / `fuel` / `bitumen` / `creosote` | `artifice:fluid.oil` … |
-| Sledge | `Artifice:item.artifice.sledge.wood` … | `artifice:sledge.wood` … |
-| Sickle | `Artifice:item.artifice.sickle.wood` … | `artifice:sickle.wood` … |
-| Steel item | `Artifice:item.artifice.steel` | `artifice:steel` |
-| Resource | `Artifice:item.artifice.resource` | `artifice:resource` |
-| Nugget / coin / dye / upgrade | `Artifice:item.artifice.{nugget,coin,dye,upgrade}` | `artifice:{nugget,coin,dye,upgrade}` |
-| Box | `Artifice:item.artifice.box` | `artifice:box` |
-| Craft kit | `Artifice:item.artifice.craftkit` | `artifice:craftkit` |
-| Bucket | `Artifice:item.bucket` | `artifice:bucket` |
+| Kind | Registry name |
+|---|---|
+| Rock | `Artifice:tile.artifice.basalt` |
+| Rock (limestone) | `Artifice:tile.artifice.limestone.gray` |
+| Slab | `Artifice:tile.artifice.basalt.slab` |
+| Double slab | `Artifice:tile.artifice.basalt.doubleslab` |
+| Stairs | `Artifice:tile.artifice.basalt.stairs.cobblestone` |
+| Frame | `Artifice:tile.artifice.frame` |
+| Detector | `Artifice:tile.artifice.detector` |
+| Blast wall | `Artifice:tile.artifice.reinforced` |
+| Glass wall | `Artifice:tile.artifice.glasswall` / `…glasswalldark` |
+| Scaffold | `Artifice:tile.artifice.scaffold` |
+| Steel block | `Artifice:tile.artifice.steel` |
+| Lamp | `Artifice:tile.artifice.lamp.white` … (16 + 16 inverted) |
+| Coloured torch | `Artifice:tile.artifice.coloredtorch0` … `15` |
+| Flora | `Artifice:tile.artifice.flora` |
+| Lotus | `Artifice:tile.artifice.flora.lily` |
+| Ore | `Artifice:tile.artifice.orecoal` … (15, plus `.glowing` for redstone/ender) |
+| Sulfur | `Artifice:tile.artifice.sulfur` |
+| Niter | `Artifice:tile.artifice.niter` |
+| Ender ore | `Artifice:tile.artifice.enderore` (+ `.glowing`) |
+| Uranium | `Artifice:tile.artifice.uranium` |
+| Glow sand | `Artifice:tile.artifice.glowsand` |
+| Charred log | `Artifice:tile.artifice.charredlog` |
+| Tephra | `Artifice:tile.artifice.tephra` |
+| Attuned | `Artifice:tile.artifice.attunedredstone.transmitter` / `.receiver` |
+| Logic | `Artifice:tile.artifice.logicredstone` |
+| Nuclear battery | `Artifice:tile.artifice.nuclearbattery` |
+| Heating coil | `Artifice:tile.artifice.heatingcoil` |
+| Fluid block | `Artifice:tile.artifice.fluid.oil` / `fuel` / `bitumen` / `creosote` |
+| Sledge | `Artifice:item.artifice.sledge.wood` … |
+| Sickle | `Artifice:item.artifice.sickle.wood` … |
+| Steel item | `Artifice:item.artifice.steel` |
+| Resource | `Artifice:item.artifice.resource` |
+| Nugget / coin / dye / upgrade | `Artifice:item.artifice.{nugget,coin,dye,upgrade}` |
+| Box | `Artifice:item.artifice.box` |
+| Craft kit | `Artifice:item.artifice.craftkit` |
+| Bucket | `Artifice:item.bucket` |
 
 Pair-count sanity check: the game test asserts uniqueness across **both** registries and that every block has an
 `ItemBlock` under the same name.
 
 ## Appendix B — Config surface
 
-File: `config/Artifice.cfg` (becomes `config/artifice.cfg`; see §4.4).
+File: `config/Artifice.cfg`.
 
 | Category | Keys (count) | Notes |
 |---|---|---|
@@ -1171,22 +1363,28 @@ done
 
 Interpretation:
 
-* **No hits** → both renames are safe from a pack standpoint; ship §4 with only the world-migration code.
+* **No hits** → the package rename is safe from a pack standpoint.
 * **Hits only for `shukaro`** → §3 needs the compatibility subclass (or a note in the changelog).
-* **Hits for `Artifice` as a dependency/IMC address** → use Option B in §4.7 (the shim container), or accept the
-  break and coordinate the dependent mod's update in the same pack revision.
+* **Hits for `Artifice` as a dependency/IMC address** → the mod id is load-bearing for someone; do not rename it.
+
+**This scan has been run** against `FuzzCraft-Legacy` (233 jars, 574 MB) and the results are in Appendix E. The
+version actually used walked the constant pool of every class in every jar, skipped binary assets, recursed
+into embedded jars, and separated *type* references from *string* references; the snippets above are the quick
+approximation. Re-run it before any release that touches names.
 
 ## Appendix D — File reference index
 
 | Finding | File:line |
 |---|---|
-| §4.3 legacy mapping hook | `ArtificeCore.java:136-149` |
-| §4.1 mod id constants | `ArtificeCore.java:44-64` |
-| §4.2 registry-name source | every `registerBlock(..., this.getUnlocalizedName())`; slabs at `ArtificeBlocks.java:194-214` |
 | §5.1 hash/equals | `util/NameMetaPair.java:78, 105` |
 | §5.2 sledge dispenser | `item/DispenserBehaviorSledge.java:25-29` |
 | §5.3 enchant nulls | `ArtificeEnchants.java:15-55`; `event/ArtificeEventHandler.java:24, 46`; `gui/ArtificeCreativeTab.java:39+` |
-| §5.4 neighbour double index | `util/MiscUtils.java:69, 91` |
+| §5.3 enchant allocation (ported fix) | `ArtificeEnchants.java:15-55`; reference implementation: `fuzzitweaks-1.2.0.jar!.../ArtificeEnchantsMixin#fuzziTweaks$findFreeEnchantID` |
+| §E.3 FuzziTweaks mixin | `fuzzitweaks-1.2.0.jar!com/mrfuzzihead/fuzzitweaks/mixins/late/artifice/ArtificeEnchantsMixin.class`, `mixins/Mixins.class`, `mixins/TargetMods.class`, `mixins.fuzzitweaks.late.json` |
+| §E.4 Chisel table | `chisel-2.18.1-GTNH.jar!team/chisel/compat/Compatibility.class` (`init`, `addSupport(String,String,String,int,int)`); API: `com/cricketcraft/chisel/api/carving/Carving.addVariation` |
+| §E.5 Angelica default | `angelica-2.2.46.jar!com/gtnewhorizons/angelica/config/AngelicaConfig.class`; live value at `config/angelica-modules.cfg:51` |
+| §E.7 config keys | `config/ProjectE/custom_emc.cfg:22`, `config/RTG/rtg.cfg:435,443`, `config/mystcraft/symbols.cfg:242`, `config/AppliedEnergistics2/recipes/items.csv`, `config/UniDict.cfg.BACKUP:169` |
+| §5.4 neighbour double index (retracted) | `util/MiscUtils.java:69, 91` |
 | §5.5 flood fill | `util/MiscUtils.java:103-134` |
 | §5.6 generator leak | `event/ArtificeTickHandler.java:44-70`; `WorldGen{Cave,Cluster,Desert,Sulfur}.java` `getChunksToGen` |
 | §5.7 scaffold | `block/frame/BlockFrameScaffold.java:127-145, 175-225` |
@@ -1221,3 +1419,236 @@ Interpretation:
 | §8 volcano dead | `world/WorldGenVolcano.java`, `world/VolcanoHelper.java`; `ArtificeWorld.java` (no reference); `ArtificeConfig.java:82, 197` |
 | §9.1 ore rewrite | `ArtificeBlocks.java:264-290`; `WorldGenCluster.java:190-235` |
 | §9.2 ore smelting | `recipe/ArtificeRecipes.java:838-860`; `ArtificeBlocks.java:278-290`; `ArtificeCore.java:115-131` |
+
+---
+
+## Appendix E — Downstream consumer audit: FuzzCraft-Legacy (2026-11-17)
+
+The §3.3 action item was "run a pack scan before release". This is the result, and it changes the release plan:
+the package rename is **not** a no-op for this pack.
+
+### E.1 Scope and method
+
+| Input | Size | Result |
+|---|---|---|
+| `mods/*.jar` | 233 jars, 574 MB | 4 jars mention `shukaro`, 1 is a hard dependency |
+| `coremods/`, `nestedmods/` | empty | — |
+| `config/**`, `scripts/*.zs` | 9 script files, ~1,400 config files | 10 config files reference Artifice; 0 scripts |
+| `saves/Test World` | 414 region files | 0 `shukaro` strings; 3.36M CoFH hash strings |
+
+Two passes, both raw byte scans over every jar entry (constant pool included, so string literals and Mixin
+targets are caught), skipping binary assets and recursing into embedded jars:
+
+1. **Legacy-reference pass** — raw byte scan of every non-binary entry for `shukaro`. Matches are classified:
+   `Lshukaro/artifice/...` / `shukaro/artifice/...` in a class file is a **type reference** in the constant pool —
+   a hard link that fails at load. Everything else is a **string** — soft, and only as good as the code that
+   consumes it (reflection, a config key, a class-name list).
+2. **Registry-reference pass** — every `artifice:`-shaped token and every `Artifice` word, classified as
+   *registry name*, *Forge dependency string*, or *prose*.
+
+Both skip image/audio assets and recurse into embedded jars. The limitation to keep in mind: a byte scan cannot see
+a name assembled at runtime from fragments, and cannot see the *intent* behind a string. Everything below was
+resolved by disassembling the class in question.
+
+### E.2 Results
+
+| Jar | Kind | Reference | Verdict |
+|---|---|---|---|
+| `fuzzitweaks-1.2.0.jar` | **type** | `@Mixin(shukaro.artifice.ArtificeEnchants)`, `@Overwrite initEnchants()`, `ArtificeConfig.*`, `ArtificeCore.logger` | **P0 — startup crash** (E.3) |
+| `angelica-2.2.46.jar` | string | `"shukaro.artifice.block.world.BlockOre"` in a config default | P3 — cosmetic (E.5) |
+| `NodalMechanics-1.3.4-GTNH.jar` | type | `shukaro/nodalmechanics/**` — same author, different mod | none (E.6) |
+| `gtnh-web-map-0.4-beta-1.jar` | string | `shukaro.warptheory.block.BlockVanish` | none (E.6) |
+
+Zero mod jars reference `Artifice` as a Forge dependency, IMC address, network channel or mod-container name. Zero
+reference `ArtificeRegistry` or any of its `register*Type` entry points — so §3.3's "treat it as API" question is
+answered: **nobody calls it**.
+
+### E.3 FuzziTweaks 1.2.0 — the one hard break
+
+Decompiled from `fuzzitweaks-1.2.0.jar`:
+
+```java
+// mixins/TargetMods.class
+ARTIFICE = new TargetMods("Artifice");              // gate: the MOD ID
+
+// mixins/Mixins.class
+MixinBuilder.addCommonMixins("artifice.ArtificeEnchantsMixin")
+            .addRequiredMod(TargetMods.ARTIFICE)
+            .setApplyIf(() -> Config.enableArtificeEnchantIdFix);
+
+// mixins/late/artifice/ArtificeEnchantsMixin.class
+@Mixin(value = shukaro.artifice.ArtificeEnchants.class, remap = false)
+    @Overwrite initEnchants()V
+    // body reads shukaro.artifice.ArtificeConfig.enchantmentInvisibleEnable / enchantmentStartID
+    // and shukaro.artifice.ArtificeCore.logger
+
+// mixins.fuzzitweaks.late.json
+"required": true
+```
+
+The gate is the **mod id**, which the package rename deliberately does not change, so the mixin is still queued
+against the renamed build and then:
+
+1. Mixin resolves `shukaro.artifice.ArtificeEnchants` → missing → `InvalidMixinException` at load. `required: true`
+   makes it fatal.
+2. Even if that were tolerated, the `@Overwrite` body links `ArtificeConfig` and `ArtificeCore` by name, so it
+   throws `NoSuchFieldError` the first time `initEnchants()` runs.
+
+There is no bridge-class escape: the overwrite touches statics on two other renamed classes, so a deprecated
+`shukaro.artifice.ArtificeEnchants` subclass would not be enough. The mixin must be deleted, which means the
+allocation logic has to exist in-tree first (§5.3) and keep ids 70/71/72 (E.6).
+
+Change list (FuzziTweaks repo):
+
+- delete `mixins/late/artifice/ArtificeEnchantsMixin.java`;
+- drop the `MixinBuilder` entry above and the now-unused `TargetMods.ARTIFICE`;
+- drop `Config.enableArtificeEnchantIdFix` (Forge leaves the stale key behind, harmless);
+- add `required-after:Artifice@<first version with the in-tree fix>` to `mcmod.info`.
+
+### E.4 Chisel 2.18.1-GTNH — an integration that never worked
+
+`team/chisel/compat/Compatibility.init()`:
+
+```java
+addSupport("Artifice", "artifice.marble",      "marble",      0, 99);
+addSupport("Artifice", "artifice.marble.slab", "marble_slab", 0, 99);
+for (String color : new String[]{"gray","lightgray","brown","tan","reddish","bluish","greenish"})
+    addSupport("Artifice", "artifice.limestone." + color, "limestone", 0, 99);
+```
+
+and the helper:
+
+```java
+public static void addSupport(String modid, String registryName, String group, int meta, int order) {
+    if (!Loader.isModLoaded(modid)) return;
+    if (GameRegistry.findBlock(modid, registryName) == null) return;      // <-- always null here
+    Carving.chisel.addVariation(group, GameRegistry.findBlock(modid, registryName), meta, order);
+}
+```
+
+`findBlock` is an exact `modId + ":" + name` lookup and Artifice registers `Artifice:tile.artifice.*`, so the
+`tile.`-less name never resolves and all eight calls return early. This is not a migration regression — it is
+current behaviour, and the reason no one noticed.
+
+The three names, corrected:
+
+```
+artifice.marble              -> tile.artifice.marble
+artifice.marble.slab         -> tile.artifice.marble.slab
+artifice.limestone.<colour>  -> tile.artifice.limestone.<colour>
+```
+
+Both sides use the same seven colour names in the same order (`ArtificeBlocks.rockColorNames:101`), and the
+trailing `99` is `order`, not a metadata range (it lands in `SimpleCarvingVariation(block, meta, order)`), so there
+is no invalid-meta hazard. All seven limestones deliberately share one `"limestone"` group so the colours swap
+into each other.
+
+Where to fix it, in order of preference:
+
+1. **Here** — a `ChiselCompat` class called from `postInit` behind `Loader.isModLoaded("chisel")`, calling
+   `Carving.chisel.addVariation(...)` directly (`compileOnly` on the Chisel API). This knows the real names and
+   can also register basalt, which Chisel never did. It also stops depending on someone else's string table.
+2. **Chisel** — the three literals above; correct, but a second repo and a second release.
+3. **Nothing** — status quo; the rename costs nothing either way.
+
+### E.5 Angelica 2.2.46 — a class name baked into a config default
+
+```java
+// com/gtnewhorizons/angelica/config/AngelicaConfig.class
+"blockCrackFixRenderPassWhitelist"  // "Add a block class here if you see flickering (z-fighting) with blockCrackFix"
+  defaults: gregtech.common.blocks.BlockOres, gregtech.common.blocks.GTBlockOre,
+            shukaro.artifice.block.world.BlockOre,        <-- this
+            bartworks.system.material.BWMetaGeneratedOres, gtPlusPlus.core.block.base.BlockBaseOre, ...
+```
+
+Matched by class-name string, so after the rename the entry stops matching and Artifice ores lose the render-pass
+whitelist (z-fighting when `blockCrackFix` is on). Cosmetic, no crash, no data.
+
+Already materialised in this instance at `config/angelica-modules.cfg:51`. Edit that line:
+
+```
+shukaro.artifice.block.world.BlockOre   ->   com.mrfuzzihead.artifice.block.world.BlockOre
+```
+
+Because the *default* lives in Angelica's jar, a fresh instance will regress. Worth a one-line upstream PR that
+lists both class names.
+
+### E.6 Not a consumer (and how to tell)
+
+| Hit | Why it is not us |
+|---|---|
+| `NodalMechanics-1.3.4-GTNH` — 57 hits | `shukaro/nodalmechanics/**`, Shukaro's other mod. Same author, different package. |
+| `gtnh-web-map` — 1 hit | `renderdata/WarpTheory-texture.txt` → `shukaro.warptheory.block.BlockVanish`. Also `renderdata/1.6.2/Artifice-*.txt`, a 1.6.2 leftover in `deleted.txt`. |
+| `Thaumcraft`, `salisarcana`, `tc4tweak` | Thaumcraft's own research category `ARTIFICE`, nothing to do with us. |
+| `buildcraft-7.2.1` | a changelog line. |
+| `coretweaks/cache/jarDiscoverer.cache` | a cached jar listing, regenerated. |
+| `config/fuzziids/*.csv` | **output**, not configuration. FuzziIDs only writes these (`IdDumpManager` → `CsvWriter`; there is no reader class), so the `shukaro.artifice.enchant.*` strings in `enchantments.csv` are a report and are regenerated. It is still the best record of the pack's live enchantment ids (70/71/72, E.6). |
+
+### E.7 Config surface: what each rename actually breaks
+
+| File | Key form | Package rename | Mod-id / registry rename |
+|---|---|---|---|
+| `config/AppliedEnergistics2/recipes/items.csv` | `Artifice:tile.artifice.basalt:0` — `modid:registryName:meta`, **generated** | safe | regenerated; old facades are re-derived from the same names |
+| `config/AppliedEnergistics2/Facades.cfg` | `tileartificebasalt.1` — unlocalised name, dots stripped | safe | breaks if unlocalised names change |
+| `config/ProjectE/custom_emc.cfg:22` | `S:Artifice:tile.artifice.marble` | safe | needs editing |
+| `config/RTG/rtg.cfg:435,443` | `Artifice:tile.artifice.basalt` (volcano block) | safe | needs editing |
+| `config/mystcraft/symbols.cfg:242` | `modmat_tile.artifice.fluid.bitumen.enabled` | safe | needs editing |
+| `config/UniDict.cfg.BACKUP:169` | `Artifice` in a mod-id list | safe | needs editing (cosmetic) |
+| `config/fuzzitweaks.cfg:32` | `EnableArtificeEnchantIdFix` | safe | goes away with the mixin |
+| `config/angelica-modules.cfg:51` | class name | **breaks (cosmetic)** | safe |
+
+All of these are `modid:registryName` or `modid:unlocalisedName`, and both components survive the package rename —
+the mod id is unchanged and every block/item is still registered from `getUnlocalizedName()`. They are, however,
+exactly the surface that would make a registry rename expensive: each one has to be edited or re-keyed, on top of
+the CoFH hash problem below.
+
+### E.8 World data: what a save actually contains
+
+Every chunk of `saves/Test World` decompressed (414 region files, all dimensions):
+
+| Lookup | Occurrences | Meaning |
+|---|---|---|
+| `shukaro` | **0** | No class names are persisted. Nothing to migrate, and a package rename cannot corrupt this world. |
+| `tileArtifice*` | **0** | No Artifice tile entities happen to be placed in it — and the ids are stable strings anyway. |
+| `Artifice:` | **3,358,850** | CoFHCore retrogen hash strings, in `CoFHWorld → Hash → List`. |
+
+The hash list is per chunk and reads `Artifice:<registryName> <featureName>`:
+
+```
+Artifice: tile.artifice.sulfur@0 Lava Deposits        (334,748 chunks)
+Artifice: tile.artifice.niter@0 Desert Deposits       (334,748)
+Artifice: tile.artifice.uranium@0 Clusters            (334,748)
+Artifice: tile.artifice.enderore@0 Clusters           (334,748)
+Artifice: tile.artifice.basalt@0 Layers               (334,748)
+Artifice: tile.artifice.marble@0 Clusters             (334,748)
+Artifice: tile.artifice.limestone.gray@0 Clusters     (334,748)
+Artifice: tile.artifice.limestone.gray@0 Caves        (334,748)
+Artifice: Flowers                                     (334,748)
+Artifice: Lilies                                      (334,748)
+Artifice: tile.blockOil Lakes                         (11,370)   <- stale, from an older Artifice
+```
+
+Eleven distinct strings, with the **mod id, the registry name and the feature name all inside them**. CoFH treats a
+changed hash as "this feature is new for this chunk", so renaming any of the three re-runs that feature over
+already-generated terrain — duplicate ore clusters, duplicate lakes. This is the concrete form of the "don't rename
+the worldgen hash" warning in §3.3 and E.8.
+
+Tile entities are the good news: `ArtificeTiles` registers plain ids (`tileArtificeAttuned`,
+`tileArtificeLogic`, `tileArtificeRadioBattery`, `tileArtificeHeatingCoil`), and 1.7.10 stores the registered id,
+not the class name. Chunk data therefore survives the package rename untouched, and a future id change would at
+least be recoverable by registering both ids.
+
+### E.9 Verdict
+
+| Migration | Safe in this pack? |
+|---|---|
+| **Package** `shukaro.artifice` → `com.mrfuzzihead.artifice` | **Yes, after two edits** — FuzziTweaks must lose its mixin (§5.3 first) and one Angelica config line changes. Worlds, configs and every other mod are unaffected. |
+| **Registry names / mod id** | **Rejected (§4)** — the CoFH hash strings (E.8) and the config surface (E.7) both say no. The names stay `Artifice:tile.artifice.*`. |
+| **Enchantment ids** | Unchanged by either rename, but *only* if the in-tree fix reproduces 70/71/72. |
+
+Order of work, which is what `refactor/1.1.6` exists for:
+
+1. §5.3 in-tree enchant fix, plus a game-test assertion on ids 70/71/72.
+2. FuzziTweaks: drop the mixin, require the new Artifice.
+3. `config/angelica-modules.cfg:51`, and optionally an Angelica PR listing both class names.
+4. Optional: `ChiselCompat` (§E.4, option 1).

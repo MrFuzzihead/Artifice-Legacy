@@ -8,11 +8,19 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeItems;
+import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 
 public class RecipeBox implements IRecipe {
 
     private ItemStack output;
+
+    /**
+     * Shown by anything that asks for the recipe output without matching it first - NEI's handlers, recipe lists,
+     * tooltips and {@code ItemSledge#getIngredientsForItemStack}, which walks every recipe in the manager. Returning
+     * null there is a crash waiting in someone else's code (CODE_REVIEW 5.18).
+     */
+    private final ItemStack defaultOutput = new ItemStack(ArtificeItems.itemBox);
 
     public boolean matches(InventoryCrafting craft, World world) {
         this.output = null;
@@ -117,9 +125,8 @@ public class RecipeBox implements IRecipe {
                         }
                     }
 
-                    NBTTagCompound tagx = new NBTTagCompound();
-                    tagx.setInteger("meta", thing.getItemDamage());
-                    tagx.setInteger("id", Item.getIdFromItem(thing.getItem()));
+                    // Registry name first, numeric id for older readers (CODE_REVIEW 9.6).
+                    NBTTagCompound tagx = BoxContents.write(new NBTTagCompound(), thing);
                     if (thing.getTagCompound() != null && !thing.getTagCompound()
                         .hasNoTags()) {
                         tagx.setTag("nbt", thing.getTagCompound());
@@ -134,7 +141,7 @@ public class RecipeBox implements IRecipe {
     }
 
     public ItemStack getCraftingResult(InventoryCrafting inventorycrafting) {
-        return this.output.copy();
+        return (this.output != null ? this.output : this.defaultOutput).copy();
     }
 
     public int getRecipeSize() {
@@ -142,6 +149,6 @@ public class RecipeBox implements IRecipe {
     }
 
     public ItemStack getRecipeOutput() {
-        return this.output;
+        return this.output != null ? this.output : this.defaultOutput;
     }
 }

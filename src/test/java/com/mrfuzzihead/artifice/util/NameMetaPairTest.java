@@ -1,7 +1,11 @@
 package com.mrfuzzihead.artifice.util;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -58,22 +62,66 @@ public class NameMetaPairTest {
     }
 
     /**
-     * Regression: a wildcard pair must be findable in a hash-based collection. It currently is not, which is why
-     * {@code WorldGenVolcano#replaced} (built from {@code new NameMetaPair(biome.topBlock)}) never matches and why
-     * {@code ArtificeRegistry#getStoneTypes} would behave inconsistently if a caller used the wildcard form.
-     *
-     * <p>
-     * Ignored rather than failing so the suite stays green; the fix is two lines in {@code NameMetaPair.hashCode()}
-     * and belongs with the refactor pass, not with the test harness.
-     * </p>
+     * Regression (CODE_REVIEW 5.1): a wildcard pair must be findable in a hash-based collection, and a concrete
+     * pair must be findable when the set holds the wildcard. {@code WorldGenVolcano#replaced} is built from
+     * {@code new NameMetaPair(biome.topBlock)} - wildcard metadata - and then queried with concrete
+     * {@code (block, meta)} pairs, so before the fix the set could never match and the volcano's surface
+     * replacement was dead even with the feature enabled.
      */
     @Test
-    @Ignore("Known bug: NameMetaPair.hashCode() ignores the -1 metadata wildcard that equals() honours")
     public void wildcardPairIsFindableInAHashSet() {
-        java.util.Set<NameMetaPair> set = new java.util.HashSet<>();
-        set.add(new NameMetaPair("minecraft:stone", 0));
+        Set<NameMetaPair> concreteOnly = new HashSet<>();
+        concreteOnly.add(new NameMetaPair("minecraft:stone", 0));
+        Assert.assertTrue(
+            "wildcard lookup missed a concrete entry",
+            concreteOnly.contains(new NameMetaPair("minecraft:stone")));
 
-        Assert.assertTrue(set.contains(new NameMetaPair("minecraft:stone")));
+        Set<NameMetaPair> wildcardOnly = new HashSet<>();
+        wildcardOnly.add(new NameMetaPair("minecraft:stone"));
+        Assert.assertTrue(
+            "concrete lookup missed a wildcard entry",
+            wildcardOnly.contains(new NameMetaPair("minecraft:stone", 7)));
+
+        Map<NameMetaPair, String> map = new HashMap<>();
+        map.put(new NameMetaPair("minecraft:stone", 3), "stone");
+        Assert.assertEquals("stone", map.get(new NameMetaPair("minecraft:stone")));
+    }
+
+    /**
+     * The other half of the contract: whatever {@code equals} says, the hashes have to agree, or a lookup finds
+     * nothing no matter which side of the comparison the wildcard is on.
+     */
+    @Test
+    public void equalPairsAlwaysAgreeOnTheHash() {
+        NameMetaPair wildcard = new NameMetaPair("minecraft:stone");
+
+        for (int meta = 0; meta < 16; meta++) {
+            NameMetaPair concrete = new NameMetaPair("minecraft:stone", meta);
+            Assert.assertEquals(concrete, wildcard);
+            Assert.assertEquals(wildcard, concrete);
+            Assert.assertEquals(
+                "equal pairs hashed differently for meta " + meta,
+                concrete.hashCode(),
+                wildcard.hashCode());
+        }
+    }
+
+    /**
+     * Pairs that {@code equals} keeps apart may still hash together - that is allowed and unavoidable once the
+     * wildcard is honoured - but they must stay distinct in a set and a map.
+     */
+    @Test
+    public void distinctMetadataIsStillDistinctInHashCollections() {
+        Set<NameMetaPair> set = new HashSet<>();
+        set.add(new NameMetaPair("minecraft:stone", 0));
+        set.add(new NameMetaPair("minecraft:stone", 1));
+        Assert.assertEquals(2, set.size());
+
+        Map<NameMetaPair, String> map = new HashMap<>();
+        map.put(new NameMetaPair("minecraft:stone", 0), "granite");
+        map.put(new NameMetaPair("minecraft:stone", 1), "diorite");
+        Assert.assertEquals("granite", map.get(new NameMetaPair("minecraft:stone", 0)));
+        Assert.assertEquals("diorite", map.get(new NameMetaPair("minecraft:stone", 1)));
     }
 
     @Test

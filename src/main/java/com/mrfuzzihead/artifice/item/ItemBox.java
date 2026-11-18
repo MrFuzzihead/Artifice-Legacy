@@ -20,6 +20,7 @@ import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 
@@ -85,14 +86,11 @@ public class ItemBox extends ItemArtifice {
     public ItemStack onItemRightClick(ItemStack stack, World world, EntityPlayer player) {
         NBTTagCompound tag = stack.getTagCompound();
         if (tag != null) {
-            ItemStack thing = new ItemStack(
-                Item.getItemById(tag.getInteger("id")),
-                stack.getItemDamage(),
-                tag.getInteger("meta"));
-            if (!tag.getCompoundTag("nbt")
-                .hasNoTags()) {
-                thing.setTagCompound(tag.getCompoundTag("nbt"));
+            ItemStack thing = BoxContents.read(tag);
+            if (thing == null) {
+                return stack;
             }
+            thing.stackSize = stack.getItemDamage();
 
             if (player.isSneaking()) {
                 int numCrafted = stack.stackSize * stack.getItemDamage();
@@ -193,7 +191,8 @@ public class ItemBox extends ItemArtifice {
 
         NBTTagCompound tag = stack.getTagCompound();
         if (tag != null) {
-            if (Item.getItemById(tag.getInteger("id")) == null) {
+            ItemStack contained = BoxContents.read(tag);
+            if (contained == null) {
                 return;
             }
 
@@ -202,8 +201,7 @@ public class ItemBox extends ItemArtifice {
                     + " "
                     + FormatCodes.Reset.code
                     + FormatCodes.Aqua.code
-                    + new ItemStack(Item.getItemById(tag.getInteger("id")), 1, tag.getInteger("meta"))
-                        .getDisplayName());
+                    + contained.getDisplayName());
             infoList.add(
                 FormatCodes.Italic.code + StatCollector.translateToLocal("tooltip.artifice.box.amount")
                     + " "

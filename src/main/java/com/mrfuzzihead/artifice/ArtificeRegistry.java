@@ -24,8 +24,19 @@ public abstract class ArtificeRegistry {
     private static final List<ItemStack> marbleTypes = new ArrayList<>();
     private static final List<ItemStack> basaltTypes = new ArrayList<>();
 
+    /**
+     * This class is a public entry point: other mods may call {@code registerStoneType} and friends from their own
+     * {@code preInit}, which can run before Artifice assigns {@code ArtificeCore.logger}. Logging through it
+     * unconditionally was a NullPointerException waiting for exactly that load order (CODE_REVIEW 5.22).
+     */
+    private static void logInfo(String message) {
+        if (ArtificeCore.logger != null) {
+            ArtificeCore.logger.info(message);
+        }
+    }
+
     public static void registerMarbleType(ItemStack stack) {
-        ArtificeCore.logger.info("Registering marble type " + stack.toString());
+        logInfo("Registering marble type " + stack.toString());
         if (marbleTypes.isEmpty()) {
             marbleTypes.add(stack);
         } else if (!marbleTypes.contains(stack)) {
@@ -83,7 +94,7 @@ public abstract class ArtificeRegistry {
     }
 
     public static void registerBasaltType(ItemStack stack) {
-        ArtificeCore.logger.info("Registering basalt type " + stack.toString());
+        logInfo("Registering basalt type " + stack.toString());
         if (basaltTypes.isEmpty()) {
             basaltTypes.add(stack);
         } else if (!basaltTypes.contains(stack)) {
@@ -158,7 +169,7 @@ public abstract class ArtificeRegistry {
 
     public static void registerDimensionBlacklist(int dimID) {
         if (!dimensionBlacklist.contains(dimID)) {
-            ArtificeCore.logger.info("Registering " + dimID + " to dimension blacklist");
+            logInfo("Registering " + dimID + " to dimension blacklist");
             dimensionBlacklist.add(dimID);
         }
     }
@@ -170,7 +181,7 @@ public abstract class ArtificeRegistry {
     public static void registerStoneType(Block stone, int meta) {
         NameMetaPair pair = new NameMetaPair(stone, meta);
         if (!stoneTypes.contains(pair)) {
-            ArtificeCore.logger.info("Registering stone type " + pair.toString());
+            logInfo("Registering stone type " + pair.toString());
             stoneTypes.add(pair);
         }
     }
@@ -181,7 +192,7 @@ public abstract class ArtificeRegistry {
 
     public static void registerWorldTypeBlacklist(String type) {
         if (!worldTypeBlacklist.contains(type)) {
-            ArtificeCore.logger.info("Registering " + type + " to world type blacklist");
+            logInfo("Registering " + type + " to world type blacklist");
             worldTypeBlacklist.add(type);
         }
     }

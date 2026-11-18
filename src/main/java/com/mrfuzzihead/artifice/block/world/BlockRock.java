@@ -77,7 +77,7 @@ public class BlockRock extends BlockArtifice {
         TextureHandler.registerConnectedTexture(reg, this, 3, "paver", this.name);
         this.icons[3] = TextureHandler.getConnectedTexture(this, 3, 0).icon;
         TextureHandler.registerConnectedTexture(reg, this, 4, "antipaver", this.name);
-        this.icons[4] = TextureHandler.getConnectedTexture(this, 3, 0).icon;
+        this.icons[4] = TextureHandler.getConnectedTexture(this, 4, 0).icon;
         this.icons[5] = TextureHandler.registerIcon(reg, "chiseled", this.name);
     }
 

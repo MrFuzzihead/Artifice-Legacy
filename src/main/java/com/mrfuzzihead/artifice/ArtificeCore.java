@@ -9,11 +9,9 @@ import net.minecraftforge.common.MinecraftForge;
 
 import org.apache.logging.log4j.Logger;
 
-import com.mrfuzzihead.artifice.command.CommandCalc;
 import com.mrfuzzihead.artifice.compat.AE2;
 import com.mrfuzzihead.artifice.compat.Buildcraft;
 import com.mrfuzzihead.artifice.compat.CarpentersBlocks;
-import com.mrfuzzihead.artifice.compat.EE3;
 import com.mrfuzzihead.artifice.compat.FMP;
 import com.mrfuzzihead.artifice.compat.Forestry;
 import com.mrfuzzihead.artifice.compat.ICompat;
@@ -45,7 +43,7 @@ import cpw.mods.fml.common.registry.GameRegistry.Type;
     modid = "Artifice",
     name = "Artifice",
     version = "1.7.10R1.1.4",
-    dependencies = "required-after:CoFHCore;after:BuildCraft|Core;after:EE3;after:Forestry;after:MineFactoryReloaded;after:Thaumcraft;after:Railcraft")
+    dependencies = "required-after:CoFHCore;after:BuildCraft|Core;after:Forestry;after:MineFactoryReloaded;after:Thaumcraft;after:Railcraft")
 public class ArtificeCore {
 
     @SidedProxy(
@@ -66,14 +64,11 @@ public class ArtificeCore {
     private ArrayList<ICompat> compats = new ArrayList<>();
 
     @EventHandler
-    public void serverStarting(FMLServerStartingEvent evt) {
-        evt.registerServerCommand(new CommandCalc());
-    }
+    public void serverStarting(FMLServerStartingEvent evt) {}
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent evt) {
         this.compats.add(new Buildcraft());
-        this.compats.add(new EE3());
         this.compats.add(new FMP());
         this.compats.add(new Forestry());
         this.compats.add(new CarpentersBlocks());
@@ -89,6 +84,10 @@ public class ArtificeCore {
         ArtificeConfig.initCommon(evt);
         ArtificeFluids.initFluids();
         ArtificeBlocks.initBlocks();
+        // Before anything can query the ore dictionary, and before ArtificeRecipes#registerOreRecipes runs in init:
+        // registering the variants only in postInit meant every one of those smelting recipes matched "Unknown" and
+        // was never added at all (CODE_REVIEW 9.2 / row 14 of the TL;DR).
+        ArtificeBlocks.registerOreVariants();
         ArtificeTiles.initTiles();
         ArtificeItems.initItems();
         ArtificeEnchants.initEnchants();
@@ -115,7 +114,6 @@ public class ArtificeCore {
     public void postInit(FMLPostInitializationEvent evt) {
         ArtificeBlocks.initOreMappings();
         ArtificeBlocks.initOreSet();
-        ArtificeBlocks.registerOreVariants();
         ArtificeBlocks.registerBasaltsAndMarbles();
         if (ArtificeConfig.floraBoneMeal) {
             for (BiomeGenBase biome : BiomeGenBase.getBiomeGenArray()) {

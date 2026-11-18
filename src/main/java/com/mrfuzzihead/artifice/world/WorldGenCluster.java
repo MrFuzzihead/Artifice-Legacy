@@ -17,6 +17,7 @@ import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.util.BlockCoord;
 import com.mrfuzzihead.artifice.util.ChunkCoord;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.PendingChunks;
 
 import cofh.api.world.IFeatureGenerator;
 import gnu.trove.map.TMap;
@@ -57,15 +58,7 @@ public class WorldGenCluster implements IFeatureGenerator {
                 .contains(worldType)) {
                 return false;
             } else {
-                int total;
-                if (this.frequency >= 100) {
-                    total = rand.nextInt(100)
-                        < Math.abs(this.frequency % (int) Math.pow(10.0, (int) Math.log10(this.frequency)))
-                            ? this.frequency / 100 + 1
-                            : this.frequency / 100;
-                } else {
-                    total = rand.nextInt(100) < this.frequency ? 0 : 1;
-                }
+                int total = GenFrequency.rollsThisChunk(rand, this.frequency);
 
                 for (int j = 0; j < total; j++) {
                     boolean doGen = false;
@@ -154,6 +147,9 @@ public class WorldGenCluster implements IFeatureGenerator {
         @Override
         public boolean doGeneration(int chunkX, int chunkZ) {
             ChunkCoord chunk = new ChunkCoord(chunkX, chunkZ);
+            if (!this.toGen.containsKey(chunk)) {
+                this.toGen.put(chunk, new ArrayList());
+            }
             int genned = 0;
             int threshold = this.size / 8;
 
@@ -165,7 +161,8 @@ public class WorldGenCluster implements IFeatureGenerator {
                     }
 
                     if (!chunk.contains(t) && !this.world.blockExists(t.x, t.y, t.z)) {
-                        return true;
+                        // Suspended, not finished: keep whatever is still queued and retry next tick.
+                        return PendingChunks.hasWork(this.toGen);
                     }
 
                     if (WorldGenCluster.this.canGenHere(this.world, t)
@@ -240,7 +237,7 @@ public class WorldGenCluster implements IFeatureGenerator {
                 }
             }
 
-            return true;
+            return PendingChunks.hasWork(this.toGen);
         }
     }
 }

@@ -34,15 +34,7 @@ public class WorldGenFlowers implements IFeatureGenerator {
                 .contains(worldType)) {
                 return false;
             } else {
-                int total;
-                if (this.frequency >= 100) {
-                    total = rand.nextInt(100)
-                        < Math.abs(this.frequency % (int) Math.pow(10.0, (int) Math.log10(this.frequency)))
-                            ? this.frequency / 100 + 1
-                            : this.frequency / 100;
-                } else {
-                    total = rand.nextInt(100) < this.frequency ? 0 : 1;
-                }
+                int total = GenFrequency.rollsThisChunk(rand, this.frequency);
 
                 for (int j = 0; j < total; j++) {
                     int type = rand.nextInt(ArtificeConfig.flora.length - 1);

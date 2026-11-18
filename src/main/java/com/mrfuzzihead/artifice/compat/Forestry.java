@@ -7,6 +7,8 @@ import net.minecraft.item.ItemStack;
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeCore;
 
+import forestry.api.apiculture.FlowerManager;
+
 public class Forestry implements ICompat {
 
     @Override
@@ -17,9 +19,9 @@ public class Forestry implements ICompat {
     @Override
     public void load() {
         try {
-            Class<?> flowerClass = Class.forName("forestry.api.apiculture.FlowerManager");
-            List<ItemStack> flowerList = (List<ItemStack>) flowerClass.getField("plainFlowers")
-                .get(null);
+            // compileOnly reference (Forestry is optional, so this class is only loaded when isModLoaded said so).
+            // Throwable rather than Exception: a Forestry build without the field throws NoSuchFieldError.
+            List<ItemStack> flowerList = FlowerManager.plainFlowers;
             ArtificeCore.logger.info("Adding flowers to the Flower Manager");
 
             for (int i = 0; i < 4; i++) {

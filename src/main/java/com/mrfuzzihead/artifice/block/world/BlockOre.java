@@ -26,6 +26,7 @@ import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.net.ClientProxy;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.OreDictFallback;
 
 import cofh.lib.util.helpers.ItemHelper;
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -259,10 +260,10 @@ public class BlockOre extends BlockArtifice {
             return Blocks.emerald_ore.getItemDropped(0, rand, fortune);
         } else if (this.name.equals("oreSulfur")) {
             return ArtificeBlocks.blockSulfur.getItemDropped(0, rand, fortune);
+        } else if (this.name.equals("oreEnder")) {
+            return ArtificeBlocks.blockEnderOre.getItemDropped(0, rand, fortune);
         } else {
-            return this.name.equals("oreEnder") ? ArtificeBlocks.blockEnderOre.getItemDropped(0, rand, fortune)
-                : ItemHelper.getOre(this.name)
-                    .getItem();
+            return OreDictFallback.item(this.oreDictEntry(), this);
         }
     }
 
@@ -277,10 +278,10 @@ public class BlockOre extends BlockArtifice {
             || this.name.equals("oreEmerald")
             || this.name.equals("oreSulfur")) {
                 return 0;
+            } else if (this.name.equals("oreEnder")) {
+                return ArtificeBlocks.blockEnderOre.damageDropped(meta);
             } else {
-                return this.name.equals("oreEnder") ? ArtificeBlocks.blockEnderOre.damageDropped(meta)
-                    : ItemHelper.getOre(this.name)
-                        .getItemDamage();
+                return OreDictFallback.meta(this.oreDictEntry());
             }
     }
 
@@ -304,15 +305,9 @@ public class BlockOre extends BlockArtifice {
         } else if (this.name.equals("oreEnder")) {
             return ArtificeBlocks.blockEnderOre.getExpDrop(world, meta, fortune);
         } else {
-            return Block.getBlockFromItem(
-                ItemHelper.getOre(this.name)
-                    .getItem())
-                != this
-                    ? Block.getBlockFromItem(
-                        ItemHelper.getOre(this.name)
-                            .getItem())
-                        .getExpDrop(world, meta, fortune)
-                    : 0;
+            ItemStack entry = this.oreDictEntry();
+            Block dropBlock = entry == null ? null : Block.getBlockFromItem(entry.getItem());
+            return dropBlock != null && dropBlock != this ? dropBlock.getExpDrop(world, meta, fortune) : 0;
         }
     }
 
@@ -333,12 +328,10 @@ public class BlockOre extends BlockArtifice {
             return new ItemStack(Blocks.emerald_ore);
         } else if (this.name.equals("oreSulfur")) {
             return new ItemStack(ArtificeBlocks.blockSulfur);
+        } else if (this.name.equals("oreEnder")) {
+            return new ItemStack(ArtificeBlocks.blockEnderOre);
         } else {
-            return this.name.equals("oreEnder") ? new ItemStack(ArtificeBlocks.blockEnderOre)
-                : new ItemStack(
-                    Block.getBlockFromItem(
-                        ItemHelper.getOre(this.name)
-                            .getItem()));
+            return OreDictFallback.blockStack(this.oreDictEntry(), this);
         }
     }
 
@@ -381,6 +374,16 @@ public class BlockOre extends BlockArtifice {
 
     public int getRenderType() {
         return ArtificeConfig.oreRenderID;
+    }
+
+    /**
+     * The ore dictionary entry this block's drop comes from, or {@code null} when the pack registers no such ore -
+     * either because the mod that owns it is absent or because it registers after Artifice. Every drop path below
+     * used to dereference this unconditionally and NPE on break, silk touch or {@code createStackedBlock}
+     * (CODE_REVIEW 5.9).
+     */
+    private ItemStack oreDictEntry() {
+        return ItemHelper.getOre(this.name);
     }
 
     public static NameMetaPair getOre(NameMetaPair ore, Block rock) {

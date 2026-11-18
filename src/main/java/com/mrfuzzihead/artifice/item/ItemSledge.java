@@ -28,7 +28,6 @@ import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 
-import cpw.mods.fml.common.ObfuscationReflectionHelper;
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -175,25 +174,34 @@ public class ItemSledge extends ItemTool {
     }
 
     private static ArrayList<ItemStack> getIngredientsForItemStack(ItemStack input, Random rand) {
-        if (input != null) {
-            for (IRecipe recipe : CraftingManager.getInstance()
-                .getRecipeList()) {
-                if ((recipe instanceof ShapedRecipes || recipe instanceof ShapedOreRecipe)
-                    && recipe.getRecipeOutput() != null
-                    && recipe.getRecipeOutput()
-                        .getUnlocalizedName()
-                        .equals(input.getUnlocalizedName())
-                    && (!recipe.getRecipeOutput()
-                        .getHasSubtypes()
-                        || recipe.getRecipeOutput()
-                            .getItemDamage() == input.getItemDamage())) {
-                    if (recipe.getRecipeOutput().stackSize > 1) {
-                        return null;
-                    }
+        if (input == null) {
+            return null;
+        }
 
-                    return getIngredientsForRecipe(recipe);
-                }
+        for (IRecipe recipe : CraftingManager.getInstance()
+            .getRecipeList()) {
+            if (!(recipe instanceof ShapedRecipes) && !(recipe instanceof ShapedOreRecipe)) {
+                continue;
             }
+
+            ItemStack output = recipe.getRecipeOutput();
+            if (output == null) {
+                continue;
+            }
+
+            // Match the stack, not the unlocalised name: block items share one name per block
+            // (tile.stone covers every variant) and two mods can collide, so a name match can pick another item's
+            // recipe - and it always picked the first one in the list, i.e. load order decided the output
+            // (CODE_REVIEW 5.15).
+            if (!output.isItemEqual(input)) {
+                continue;
+            }
+
+            if (output.stackSize > 1) {
+                return null;
+            }
+
+            return getIngredientsForRecipe(recipe);
         }
 
         return null;
@@ -221,7 +229,10 @@ public class ItemSledge extends ItemTool {
     private static ArrayList<ItemStack> getIngredientsForShapedOreRecipe(ShapedOreRecipe recipe) {
         try {
             ArrayList<ItemStack> ingredients = new ArrayList<>();
-            Object[] objects = (Object[]) ObfuscationReflectionHelper.getPrivateValue(ShapedOreRecipe.class, recipe, 3);
+            // ShapedOreRecipe#getInput is public in 1.7.10 Forge. This used to read the private field by *index*
+            // (ObfuscationReflectionHelper.getPrivateValue(..., 3)), which breaks the moment Forge adds or reorders
+            // a field - the one genuinely fragile reflection call in the mod.
+            Object[] objects = recipe.getInput();
             ItemStack[] items = new ItemStack[objects.length];
 
             for (int i = 0; i < objects.length; i++) {

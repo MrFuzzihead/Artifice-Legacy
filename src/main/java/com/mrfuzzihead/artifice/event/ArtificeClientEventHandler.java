@@ -7,7 +7,6 @@ import net.minecraftforge.client.event.TextureStitchEvent.Post;
 import net.minecraftforge.client.event.TextureStitchEvent.Pre;
 import net.minecraftforge.fluids.Fluid;
 
-import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeFluids;
 
@@ -53,7 +52,7 @@ public class ArtificeClientEventHandler {
     @SideOnly(Side.CLIENT)
     @SubscribeEvent
     public void renderInvisibleArmor(SetArmorModel event) {
-        if (ArtificeConfig.enchantmentInvisibleEnable && event.stack != null
+        if (ArtificeEnchants.hasInvisible() && event.stack != null
             && EnchantmentHelper.getEnchantmentLevel(ArtificeEnchants.enchantmentInvisible.effectId, event.stack) > 0) {
             event.result = 0;
         }

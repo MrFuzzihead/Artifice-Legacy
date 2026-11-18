@@ -57,12 +57,7 @@ public class BlockFrameGlassWall extends BlockFrame {
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(IBlockAccess access, int x, int y, int z, int side) {
-        int meta = access.getBlockMetadata(x, y, z);
-        if (meta > ArtificeConfig.tiers.length) {
-            meta = 0;
-        }
-
-        return this.getIcon(side, meta);
+        return this.getIcon(side, access.getBlockMetadata(x, y, z));
     }
 
     @SideOnly(Side.CLIENT)
