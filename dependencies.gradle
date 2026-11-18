@@ -49,6 +49,6 @@ dependencies {
 
     // Optional integrations, compiled against the real API so the compat classes do not need reflection. All of
     // these are gated on Loader.isModLoaded(...) at runtime, so they are never present in a pack that lacks the mod.
-    compileOnly("com.github.GTNewHorizons:CarpentersBlocks:3.7.3-GTNH:dev")
+    compileOnly("com.github.GTNewHorizons:CarpentersBlocks:3.8.0-GTNH:dev")
     compileOnly("com.github.GTNewHorizons:ForestryMC:4.12.1:dev")
 }

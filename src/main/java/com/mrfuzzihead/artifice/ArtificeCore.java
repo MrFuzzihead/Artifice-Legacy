@@ -12,7 +12,6 @@ import org.apache.logging.log4j.Logger;
 import com.mrfuzzihead.artifice.compat.AE2;
 import com.mrfuzzihead.artifice.compat.Buildcraft;
 import com.mrfuzzihead.artifice.compat.CarpentersBlocks;
-import com.mrfuzzihead.artifice.compat.EE3;
 import com.mrfuzzihead.artifice.compat.FMP;
 import com.mrfuzzihead.artifice.compat.Forestry;
 import com.mrfuzzihead.artifice.compat.ICompat;
@@ -44,7 +43,7 @@ import cpw.mods.fml.common.registry.GameRegistry.Type;
     modid = "Artifice",
     name = "Artifice",
     version = "1.7.10R1.1.4",
-    dependencies = "required-after:CoFHCore;after:BuildCraft|Core;after:EE3;after:Forestry;after:MineFactoryReloaded;after:Thaumcraft;after:Railcraft")
+    dependencies = "required-after:CoFHCore;after:BuildCraft|Core;after:Forestry;after:MineFactoryReloaded;after:Thaumcraft;after:Railcraft")
 public class ArtificeCore {
 
     @SidedProxy(
@@ -70,7 +69,6 @@ public class ArtificeCore {
     @EventHandler
     public void preInit(FMLPreInitializationEvent evt) {
         this.compats.add(new Buildcraft());
-        this.compats.add(new EE3());
         this.compats.add(new FMP());
         this.compats.add(new Forestry());
         this.compats.add(new CarpentersBlocks());

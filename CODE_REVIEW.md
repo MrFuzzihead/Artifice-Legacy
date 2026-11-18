@@ -126,7 +126,7 @@ that matters: no world migration is needed for (a).
 | **AE2 spatial whitelist** | `compat/AE2.java` sends four `whitelist-spatial` IMC messages whose *values are class names* (`com.mrfuzzihead.artifice.tile.TileEntityAttuned`, …). AE2 resolves them by class name. Old entries persisted from a previous version (`shukaro.artifice.tile.…`) will fail to resolve; AE2 logs and skips them. Re-sent on every load with the new names, so new worlds are correct, but a pre-existing AE2 config may keep stale `shukaro` strings forever. | Low, cosmetic |
 | **Reflection from other mods** | Nothing in this repo reflects into `shukaro.*`. The pack scan (Appendix E) found exactly one consumer, and it is not reflection: **FuzziTweaks 1.2.0** links the old package directly from a Mixin (`@Mixin(value = shukaro.artifice.ArtificeEnchants.class)`, `@Overwrite initEnchants()`, plus `ArtificeConfig` / `ArtificeCore` field refs). It crashes on startup against the renamed build. | **Critical — must be fixed with the release** |
 | **Angelica** | `blockCrackFixRenderPassWhitelist` defaults to a list of block **class names**, including `shukaro.artifice.block.world.BlockOre`. Resolved by string, so the entry silently stops matching after the rename. Cosmetic (z-fighting on ores) and fixable in config, but the *default* lives in Angelica's jar, so a fresh instance regresses. | Low, and it recurs on reinstall |
-| **ForgeMultipart / BuildCraft / MFR / Forestry / Carpenters / EE3 interop** | All of these are ItemStack-, string- or reflection-based and reference *their own* classes, not ours. Unaffected. | None |
+| **ForgeMultipart / BuildCraft / MFR / Forestry / Carpenters interop** | All of these are ItemStack-, string- or reflection-based and reference *their own* classes, not ours. Unaffected. (The EE3 compat has since been deleted; see §9.10.) | None |
 | **Tile entities** | `ArtificeTiles` registers `"tileArtificeAttuned"` etc. Tile-entity ids are **not** namespaced and are **not** class names in 1.7.10, so chunk data loads unchanged. Verified against the pack's own save: 414 region files, zero `shukaro` strings (§E.5). | None |
 | **`mcmod.info` / `authorList`** | Already lists `MrFuzzihead` and `Shukaro`. Fine. | None |
 
@@ -910,7 +910,7 @@ client run to confirm nothing else subscribed.
 | `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. |
 | `world/WorldGenLayer.java:36-90` | Scans the full 16×16×height band and does two `NameMetaPair` hash lookups per block. At the default basalt layer (0–10) that is ~2.8k blocks/chunk; if a user configures a tall layer it is 65k. | Skip blocks that are air first, and use a single `getBlock`+`getBlockMetadata` pair (already done) but early-out on `isAirBlock` before building the pair. |
 | `util/MiscUtils.java:63-98` | Called per coil/battery per tick; builds and shuffles a 6-element `Integer[]` each call (two allocations + boxing). | Use a static `int[]` rotated by a random start index instead of shuffle+boxing. |
-| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load, but `EE3`/`Forestry`/`Carpenters` use reflection per call. | Only relevant if those methods are hot; they are load-time only. |
+| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. |
 | `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path; leave alone, but see §7. |
 
 ---
@@ -1163,16 +1163,27 @@ SpongePowered imports, nothing in `dependencies.gradle`), no ASM or coremod (`co
 | `compat/CarpentersBlocks` | `Class.forName("...FeatureRegistry").getField("coverExceptions")` | `compileOnly` on `CarpentersBlocks:3.7.3-GTNH`, direct `FeatureRegistry.coverExceptions` |
 | `compat/Forestry` | `Class.forName("forestry.api.apiculture.FlowerManager").getField("plainFlowers")` | `compileOnly` on `ForestryMC:4.12.1`, direct `FlowerManager.plainFlowers` |
 | `item/ItemSledge` | `ObfuscationReflectionHelper.getPrivateValue(ShapedOreRecipe.class, recipe, **3**)` | `recipe.getInput()` - the accessor is public in 1.7.10 Forge |
-| `compat/EE3` | `Class.forName("com.pahimar.ee3.init.ModItems")`, two static fields | **unchanged** |
+| `compat/EE3` | `Class.forName("com.pahimar.ee3.init.ModItems")`, two static fields | **deleted** - see below |
 
 The sledge one was the worst of them: a **field index**, not a name, so any Forge field addition or reorder would
 have silently changed which field was read. `ShapedOreRecipe#getInput()` has been public since 1.7.10, so there was
 never a reason to reflect.
 
-EE3 stays reflective for two reasons: there is no published deobfuscated artifact (not on the GTNH maven; its
-CurseForge files are 1.7.10 pre-releases), so there is nothing to compile against, and EE3 is absent from the pack
-this build targets, so a hard dependency would be maintenance for a path that never runs. Its lookups are by field
-*name*, so a version change degrades to the existing `catch` rather than crashing.
+**EE3 was deleted rather than converted.** It added 18 shapeless recipes (minium or philosopher's stone +
+cobblestone + a dye → each coloured marble/basalt/limestone variant), i.e. a transmutation shortcut for recolouring
+stone. Three things make it dead weight:
+
+* EE3 never left alpha for 1.7.10 - the last builds are 2014-2015 pre-releases, and the 1.7.10 equivalent people
+  actually run is **ProjectE**, which this pack has and EE3 it does not. The class could never execute.
+* There is no published deobfuscated artifact to compile against, so the only alternatives were reflection or
+  vendoring an API stub for an abandoned mod.
+* Artifice already does this mod-natively: the marble/basalt cycling chain (`stoneCycleRecipes`, `registerStoneType`
+  / `registerMarbleType` / `registerBasaltType`, driven by IMC) is the supported way to recolour these stones.
+
+If the transmutation recipes are ever wanted, they should be reimplemented as a typed **ProjectE** compat
+(`curse.maven:ProjectE-226410:2340786` is a known-good coordinate, already used by FuzziTweaks) rather than
+resurrected from reflection. Removing the class also dropped `after:EE3` from the `@Mod` dependency string.
+
 
 The two converted compat classes keep their `try`/`catch (Throwable)` and their `Loader.isModLoaded` gate: the
 `compileOnly` reference makes a version mismatch a `NoSuchFieldError` (an `Error`, not an `Exception`), and an
