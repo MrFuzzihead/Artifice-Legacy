@@ -4,6 +4,7 @@ import java.util.Random;
 import java.util.Set;
 
 import net.minecraft.block.Block;
+import net.minecraft.init.Blocks;
 import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeBlocks;
@@ -62,20 +63,21 @@ public class WorldGenLayer implements IFeatureGenerator {
                         }
 
                         for (int t = min; t < max; t++) {
-                            NameMetaPair pair = new NameMetaPair(
-                                world.getBlock(i, t, j),
-                                world.getBlockMetadata(i, t, j));
-                            if (this.replaced.contains(pair) || ArtificeBlocks.oreSet.contains(pair)) {
-                                NameMetaPair ore = new NameMetaPair(
-                                    world.getBlock(i, t, j),
-                                    world.getBlockMetadata(i, t, j));
-                                if (this.replaced.contains(ore)) {
-                                    world.setBlock(i, t, j, this.block, this.meta, 0);
-                                } else if (ArtificeBlocks.oreSet.contains(ore)) {
-                                    NameMetaPair newOre = BlockOre.getOre(ore, this.block);
-                                    if (newOre != null) {
-                                        world.setBlock(i, t, j, newOre.getBlock(), newOre.getMetadata(), 0);
-                                    }
+                            // One block read, one pair. This band is 256 blocks tall at worst and runs per chunk
+                            // column: the old form built the pair twice, so a hit cost four world reads and two
+                            // registry lookups for the same block (CODE_REVIEW §6).
+                            Block block = world.getBlock(i, t, j);
+                            if (block == Blocks.air) {
+                                continue;
+                            }
+
+                            NameMetaPair pair = new NameMetaPair(block, world.getBlockMetadata(i, t, j));
+                            if (this.replaced.contains(pair)) {
+                                world.setBlock(i, t, j, this.block, this.meta, 0);
+                            } else if (ArtificeBlocks.oreSet.contains(pair)) {
+                                NameMetaPair newOre = BlockOre.getOre(pair, this.block);
+                                if (newOre != null) {
+                                    world.setBlock(i, t, j, newOre.getBlock(), newOre.getMetadata(), 0);
                                 }
                             }
                         }

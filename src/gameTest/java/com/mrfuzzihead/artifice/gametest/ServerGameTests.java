@@ -51,6 +51,7 @@ import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
 import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
+import com.mrfuzzihead.artifice.world.WorldGenLayer;
 
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 
@@ -94,6 +95,7 @@ public final class ServerGameTests {
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("lamp stability", ServerGameTests::checkLampStability);
         run("detector pulse", ServerGameTests::checkDetectorPulse);
+        run("ore layer generation", ServerGameTests::checkLayerGeneration);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -1070,6 +1072,65 @@ public final class ServerGameTests {
         }
     }
 
+    /**
+     * §6: the layer generator now reads each block once and skips air before building its lookup pair. The refactor
+     * collapsed two branches that had to stay equivalent - a registered stone type is replaced, anything else is
+     * left alone, and an ore is converted rather than overwritten.
+     *
+     * <p>
+     * Run on a chunk far from every other test site, because the generator is hardcoded to work in 16x16 columns and
+     * will rewrite whatever it finds there.
+     * </p>
+     */
+    private static void checkLayerGeneration() {
+        World world = overworld();
+        int chunkX = 4000;
+        int chunkZ = 4000;
+        int x0 = chunkX * 16;
+        int z0 = chunkZ * 16;
+
+        Set<NameMetaPair> stoneTypes = ArtificeRegistry.getStoneTypes();
+        check("there is at least one registered stone type to replace", !stoneTypes.isEmpty());
+        if (stoneTypes.isEmpty()) {
+            return;
+        }
+
+        NameMetaPair stone = stoneTypes.iterator()
+            .next();
+        check("the registered stone type resolves to a block", stone.getBlock() != null);
+        if (stone.getBlock() == null) {
+            return;
+        }
+
+        // 40..60: the generator jitters both ends by up to 3, so everything in 43..56 is inside every column's band.
+        int y = 50;
+        WorldGenLayer layer = new WorldGenLayer(ArtificeBlocks.rockBlocks[0], 0, 40, 60);
+
+        for (int dx = 0; dx < 3; dx++) {
+            for (int dz = 0; dz < 3; dz++) {
+                world.setBlock(x0 + dx, y, z0 + dz, stone.getBlock(), stone.getMetadata(), 0);
+            }
+        }
+        // Not a stone type: must survive untouched.
+        world.setBlock(x0 + 9, y, z0, Blocks.dirt, 0, 3);
+
+        layer.generateFeature(world.rand, chunkX, chunkZ, world, true);
+
+        int replaced = 0;
+        for (int dx = 0; dx < 3; dx++) {
+            for (int dz = 0; dz < 3; dz++) {
+                if (world.getBlock(x0 + dx, y, z0 + dz) == ArtificeBlocks.rockBlocks[0]) {
+                    replaced++;
+                }
+            }
+        }
+        checkEquals("the layer replaces every registered stone block in the band", 9, replaced);
+        checkEquals(
+            "the layer leaves blocks that are not stone types alone",
+            Blocks.dirt,
+            world.getBlock(x0 + 9, y, z0));
+    }
+
     private static void checkAttunedRedstone() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1565,6 +1626,17 @@ public final class ServerGameTests {
                     ingredient != null && ingredient.getItem() == Item.getItemFromBlock(Blocks.planks));
             }
 
+            // A recipe that makes more than one item is not a recipe for a single drop: breaking one torch must not
+            // yield a torch's worth of sticks and coal.
+            site.setBlock(site.x, site.y, site.z, Blocks.torch, 0);
+            List<ItemStack> torch = com.mrfuzzihead.artifice.item.ItemSledge
+                .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+            check(
+                "a multi-output recipe is not used",
+                torch != null && torch.size() == 1
+                    && torch.get(0)
+                        .getItem() == Item.getItemFromBlock(Blocks.torch));
+
             // A block with no shaped recipe keeps its normal drops.
             site.setBlock(site.x, site.y, site.z, Blocks.stone, 0);
             List<ItemStack> stone = com.mrfuzzihead.artifice.item.ItemSledge
@@ -1575,6 +1647,20 @@ public final class ServerGameTests {
                 stone != null && stone.size() == 1
                     && stone.get(0)
                         .getItem() == Item.getItemFromBlock(Blocks.cobblestone));
+
+            // The recipe index is built once and reused; a stale or partial index would give a different answer the
+            // second time round, which is the whole risk of caching a registry.
+            site.setBlock(site.x, site.y, site.z, Blocks.crafting_table, 0);
+            for (int repeat = 0; repeat < 3; repeat++) {
+                List<ItemStack> again = com.mrfuzzihead.artifice.item.ItemSledge
+                    .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+                check(
+                    "the recipe index answers consistently",
+                    again != null && again.size() == 4
+                        && again.get(0) != null
+                        && again.get(0)
+                            .getItem() == Item.getItemFromBlock(Blocks.planks));
+            }
         } finally {
             site.clear();
         }

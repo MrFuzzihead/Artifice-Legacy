@@ -1,8 +1,10 @@
 package com.mrfuzzihead.artifice.item;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 
 import net.minecraft.block.Block;
@@ -12,6 +14,7 @@ import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemTool;
 import net.minecraft.item.crafting.CraftingManager;
@@ -36,6 +39,18 @@ public class ItemSledge extends ItemTool {
 
     private IIcon icon;
     private int lossChance;
+
+    /**
+     * Shaped recipes, keyed by the item they produce.
+     *
+     * <p>
+     * The sledge asks "which recipe makes this drop?" once per block broken, and the answer used to be a walk of the
+     * whole {@link CraftingManager} list - thousands of entries in a large pack (CODE_REVIEW §6). The index keeps the
+     * recipes in the same order as the global list, so the first match is the same recipe the scan would have found,
+     * and it is built on first use rather than at load time because items register after us.
+     * </p>
+     */
+    private static volatile Map<Item, List<IRecipe>> recipeIndex;
 
     public ItemSledge(ToolMaterial mat) {
         super(2.0F, mat, null);
@@ -174,16 +189,18 @@ public class ItemSledge extends ItemTool {
     }
 
     private static ArrayList<ItemStack> getIngredientsForItemStack(ItemStack input, Random rand) {
-        if (input == null) {
+        if (input == null || input.getItem() == null) {
             return null;
         }
 
-        for (IRecipe recipe : CraftingManager.getInstance()
-            .getRecipeList()) {
-            if (!(recipe instanceof ShapedRecipes) && !(recipe instanceof ShapedOreRecipe)) {
-                continue;
-            }
+        List<IRecipe> candidates = recipeIndex().get(input.getItem());
+        if (candidates == null) {
+            return null;
+        }
 
+        for (IRecipe recipe : candidates) {
+            // Already filtered to the two shaped types by the index; the output can still be null if a tweaker
+            // empties a recipe after we indexed it.
             ItemStack output = recipe.getRecipeOutput();
             if (output == null) {
                 continue;
@@ -205,6 +222,41 @@ public class ItemSledge extends ItemTool {
         }
 
         return null;
+    }
+
+    private static Map<Item, List<IRecipe>> recipeIndex() {
+        Map<Item, List<IRecipe>> index = recipeIndex;
+        if (index == null) {
+            index = buildRecipeIndex();
+            recipeIndex = index;
+        }
+        return index;
+    }
+
+    private static Map<Item, List<IRecipe>> buildRecipeIndex() {
+        Map<Item, List<IRecipe>> index = new IdentityHashMap<>();
+        for (Object entry : CraftingManager.getInstance()
+            .getRecipeList()) {
+            if (!(entry instanceof ShapedRecipes) && !(entry instanceof ShapedOreRecipe)) {
+                continue;
+            }
+
+            IRecipe recipe = (IRecipe) entry;
+            ItemStack output = recipe.getRecipeOutput();
+            if (output == null || output.getItem() == null) {
+                continue;
+            }
+
+            // Item does not override equals(), so an IdentityHashMap is both correct and faster than a HashMap of
+            // this size.
+            List<IRecipe> forItem = index.get(output.getItem());
+            if (forItem == null) {
+                forItem = new ArrayList<>(4);
+                index.put(output.getItem(), forItem);
+            }
+            forItem.add(recipe);
+        }
+        return index;
     }
 
     private static ArrayList<ItemStack> getIngredientsForRecipe(IRecipe recipe) {
