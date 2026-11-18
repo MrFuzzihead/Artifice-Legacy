@@ -56,6 +56,11 @@ public class BlockFlora extends BlockFlower {
         if (meta == 4 && world.getBlockLightValue(x, y, z) >= 8) {
             world.setBlockMetadataWithNotify(x, y, z, 3, 2);
         }
+
+        // BlockBush#updateTick is what drops the flower when it can no longer stand (soil gone, light gone), and it
+        // never ran because this override did not call it (CODE_REVIEW 5.16). A flower on a removed dirt block could
+        // therefore sit there until some unrelated neighbour update happened to arrive.
+        super.updateTick(world, x, y, z, random);
     }
 
     @SideOnly(Side.CLIENT)

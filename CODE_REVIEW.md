@@ -548,6 +548,12 @@ this.icons[4] = TextureHandler.getConnectedTexture(this, 3, 0).icon;   // 3 == p
 `BlockRockSlab` does it correctly (`:114-121`), so the antipaver *block* face uses the paver icon while the
 antipaver *slab* uses the antipaver icon. One-character fix.
 
+**Status: fixed on `refactor/1.1.6`** (the index is 4). Not covered by a test: icons only exist client-side, and the
+in-game harness runs a dedicated server. Recorded here as a read-the-code fix.
+
+The second half of this item - `BlockRockSlab` only registering the CTM pair when a rock with that name exists, so
+`icons[2]`/`icons[3]` can stay null - is untouched.
+
 Also `BlockRockSlab.registerBlockIcons` (`:110-124`) only registers the paver/antipaver CTM **if** a matching rock
 is found by `unlocalizedName.contains(name)`; otherwise `icons[2]`/`icons[3]` stay null and `getIcon` NPEs later.
 Register unconditionally.
@@ -567,6 +573,14 @@ Register unconditionally.
 * `:143-160` (the plant branch) calls `harvestBlock` and `setBlockToAir` on both sides; `harvestBlock` is
   internally guarded by `isRemote`, but `setBlockToAir` is not, so the client runs a redundant block change on
   every harvest. Harmless, but it produces client-side block-update churn in large fields.
+
+**Status: fixed on `refactor/1.1.6`.** The window is inclusive on both axes, both damage calls are
+`Math.max(1, count / n)` (a harvest always costs something), and the plant branch only changes blocks when
+`!world.isRemote`. The leaf branch is otherwise unchanged: deleting every leaf in range is the sickle's job, and the
+`harvestBlock`-then-`setBlockToAir` pair is what makes that work for leaves that refuse harvesting.
+
+Game test: a 3×3 tallgrass field with a wood sickle (radius 1) harvests exactly the centre plus the four orthogonal
+neighbours and leaves the four corners, and costs 2 durability. Old code harvests 3, leaves 6, and costs 1.
 
 ### 5.15 `ItemSledge` scoops recipes by matching the *unlocalised* name — **P2**
 
@@ -588,6 +602,12 @@ gone). Because `setTickRandomly(true)` is set, the block ticks, but the "drop wh
 a neighbour update.
 
 Also `getIcon` uses `>` (see 5.12) and `getSubBlocks` excludes the closed lotus deliberately.
+
+**Status: fixed on `refactor/1.1.6`** — the override now calls `super.updateTick` after the day/night swap.
+
+Game test: a flower whose soil was removed with **no** neighbour notification (flags `0`, so nothing else can remove
+it) survives until `updateTick` runs, and is gone afterwards. Without the super call it survives the tick too - which
+is what the test showed against the old code for all three flammable subtypes.
 
 ### 5.17 `BoxCraftingHandler` NPEs on an empty box — **P2**
 

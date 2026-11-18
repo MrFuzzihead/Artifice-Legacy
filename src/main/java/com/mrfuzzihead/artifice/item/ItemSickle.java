@@ -123,7 +123,8 @@ public class ItemSickle extends ItemTool {
                         world.rand.nextFloat() * 0.1F + 0.9F);
                 }
 
-                stack.damageItem(count / 4, player);
+                // Integer division gave zero durability for 1..3 leaves; a harvest always costs something.
+                stack.damageItem(Math.max(1, count / 4), player);
                 if (stack.stackSize <= 0) {
                     player.destroyCurrentEquippedItem();
                 }
@@ -135,14 +136,20 @@ public class ItemSickle extends ItemTool {
         } else {
             int count = 0;
 
-            for (int i = -radius; i < radius; i++) {
-                for (int k = -radius; k < radius; k++) {
+            // Inclusive on both sides: `i < radius` harvested an off-centre square that never reached +radius
+            // (CODE_REVIEW 5.14).
+            for (int i = -radius; i <= radius; i++) {
+                for (int k = -radius; k <= radius; k++) {
                     Block b = world.getBlock(x + i, y, z + k);
                     int meta = world.getBlockMetadata(x + i, y, z + k);
                     if (b instanceof IPlantable && coord.getDistance(x + i, y, z + k) <= radius
                         && b.canHarvestBlock(player, meta)) {
-                        b.harvestBlock(world, player, x + i, y, z + k, meta);
-                        world.setBlockToAir(x + i, y, z + k);
+                        // onBlockStartBreak runs on both sides; the block change belongs to the server only, or the
+                        // client sends a redundant update per block harvested.
+                        if (!world.isRemote) {
+                            b.harvestBlock(world, player, x + i, y, z + k, meta);
+                            world.setBlockToAir(x + i, y, z + k);
+                        }
                         count++;
                     }
                 }
@@ -158,7 +165,7 @@ public class ItemSickle extends ItemTool {
                     world.rand.nextFloat() * 0.1F + 0.9F);
             }
 
-            if (stack.attemptDamageItem(count / 2, itemRand)) {
+            if (stack.attemptDamageItem(Math.max(1, count / 2), itemRand)) {
                 player.destroyCurrentEquippedItem();
             }
 

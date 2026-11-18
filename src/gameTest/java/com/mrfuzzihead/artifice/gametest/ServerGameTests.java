@@ -87,6 +87,8 @@ public final class ServerGameTests {
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
+        run("sickle", ServerGameTests::checkSickleAreaOfEffect);
+        run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
         run("logic redstone", ServerGameTests::checkLogicRedstone);
         run("attuned redstone", ServerGameTests::checkAttunedRedstone);
         run("heating coil", ServerGameTests::checkHeatingCoil);
@@ -592,6 +594,93 @@ public final class ServerGameTests {
             check(
                 "with no anchored neighbour at all the scaffold cannot stay",
                 !ArtificeBlocks.blockScaffold.canBlockStay(world, cx, cy, cz));
+        } finally {
+            site.clear();
+        }
+    }
+
+    /**
+     * CODE_REVIEW 5.14. The plant window was {@code i < radius} on both axes, so it harvested an off-centre square
+     * that never reached +radius, and both branches divided the block count before damaging the tool, so harvesting
+     * one or two plants cost no durability at all.
+     */
+    private static void checkSickleAreaOfEffect() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        EntityPlayer player = net.minecraftforge.common.util.FakePlayerFactory
+            .getMinecraft((net.minecraft.world.WorldServer) world);
+        if (player == null) {
+            check("fake player available", false);
+            return;
+        }
+
+        try {
+            int cx = site.x + 4;
+            int cy = site.y;
+            int cz = site.z + 4;
+
+            for (int i = -1; i <= 1; i++) {
+                for (int k = -1; k <= 1; k++) {
+                    site.setFloor(cx + i, cy - 1, cz + k, Blocks.dirt);
+                    site.setBlock(cx + i, cy, cz + k, Blocks.tallgrass, 1);
+                }
+            }
+
+            ItemStack sickle = new ItemStack(ArtificeItems.itemSickleWood);
+            boolean handled = ((ArtificeItems.itemSickleWood)) != null
+                && ArtificeItems.itemSickleWood.onBlockStartBreak(sickle, cx, cy, cz, player);
+            check("the sickle handles a plant break", handled);
+
+            int harvested = 0;
+            for (int i = -1; i <= 1; i++) {
+                for (int k = -1; k <= 1; k++) {
+                    if (world.isAirBlock(cx + i, cy, cz + k)) {
+                        harvested++;
+                    }
+                }
+            }
+
+            // Radius 1 with a euclidean distance test is the centre plus the four orthogonal neighbours; the two
+            // diagonals are out of range. The old window could only ever reach three of them.
+            checkEquals("radius 1 harvests the centre and all four orthogonal neighbours", 5, harvested);
+            checkEquals("the four-diagonal corners survive", 4, 9 - harvested);
+            checkEquals("harvesting five plants costs two durability", 2, sickle.getItemDamage());
+            check("a radius-1 field is not damaged by a diagonal-only harvest", sickle.getItemDamage() >= 1);
+        } finally {
+            site.clear();
+        }
+    }
+
+    /**
+     * CODE_REVIEW 5.16. {@code BlockFlora.updateTick} never called {@code BlockBush#updateTick}, which is what drops
+     * a flower that can no longer stand. With the soil gone the flower should be removed on its next tick.
+     */
+    private static void checkFloraDropsWithoutSoil() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        try {
+            for (int meta = 0; meta < 3; meta++) {
+                int x = site.x + meta * 2;
+                site.setFloor(x, site.y - 1, site.z, Blocks.dirt);
+                site.setBlock(x, site.y, site.z, ArtificeBlocks.blockFlora, meta);
+                checkEquals("flora " + meta + " placed", ArtificeBlocks.blockFlora, world.getBlock(x, site.y, site.z));
+
+                // Flag 0: no neighbour notification, so nothing removes the flower except its own tick. This is the
+                // case the missing super call left broken - a flower with no soil that no neighbour update reached.
+                world.setBlock(x, site.y - 1, site.z, Blocks.air, 0, 0);
+                checkEquals(
+                    "flora " + meta + " survives until something ticks it",
+                    ArtificeBlocks.blockFlora,
+                    world.getBlock(x, site.y, site.z));
+
+                ArtificeBlocks.blockFlora.updateTick(world, x, site.y, site.z, world.rand);
+                checkEquals(
+                    "flora " + meta + " is gone once the soil is",
+                    Blocks.air,
+                    world.getBlock(x, site.y, site.z));
+            }
         } finally {
             site.clear();
         }
