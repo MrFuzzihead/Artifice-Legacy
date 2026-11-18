@@ -84,7 +84,10 @@ public class ItemBlockSlabArtifice extends ItemSlab {
     @SideOnly(Side.CLIENT)
     public void addInformation(ItemStack stack, EntityPlayer player, List infoList, boolean advancedTooltips) {
         if (ArtificeConfig.tooltips) {
-            NameMetaPair pair = new NameMetaPair(stack.getUnlocalizedName(), stack.getItemDamage());
+            // Key by registry identity, the way ArtificeRegistry registers tooltips: the unlocalised name is a
+            // localisation key, not a registry name, so this lookup could never match and slab tooltips were dead
+            // (CODE_REVIEW 5.29).
+            NameMetaPair pair = new NameMetaPair(stack.getItem(), stack.getItemDamage());
             if (ArtificeRegistry.getTooltipMap()
                 .get(pair) != null) {
                 for (String s : ArtificeRegistry.getTooltipMap()

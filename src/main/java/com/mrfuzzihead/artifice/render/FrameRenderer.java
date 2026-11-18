@@ -7,6 +7,8 @@ import net.minecraft.world.IBlockAccess;
 
 import org.lwjgl.opengl.GL11;
 
+import com.mrfuzzihead.artifice.ArtificeConfig;
+
 import cpw.mods.fml.client.registry.ISimpleBlockRenderingHandler;
 
 public class FrameRenderer implements ISimpleBlockRenderingHandler {
@@ -60,6 +62,9 @@ public class FrameRenderer implements ISimpleBlockRenderingHandler {
     }
 
     public int getRenderId() {
-        return 0;
+        // RenderingRegistry uses the id passed to registerBlockHandler, so rendering worked, but this method is part
+        // of the ISimpleBlockRenderingHandler contract and tools/NEI plugins ask the handler what it is
+        // (CODE_REVIEW 5.30).
+        return ArtificeConfig.frameRenderID;
     }
 }

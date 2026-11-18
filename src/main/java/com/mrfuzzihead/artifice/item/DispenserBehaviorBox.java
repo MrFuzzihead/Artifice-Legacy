@@ -2,10 +2,11 @@ package com.mrfuzzihead.artifice.item;
 
 import net.minecraft.dispenser.BehaviorDefaultDispenseItem;
 import net.minecraft.dispenser.IBlockSource;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntityDispenser;
+
+import com.mrfuzzihead.artifice.util.BoxContents;
 
 public class DispenserBehaviorBox extends BehaviorDefaultDispenseItem {
 
@@ -13,15 +14,10 @@ public class DispenserBehaviorBox extends BehaviorDefaultDispenseItem {
 
     public ItemStack dispenseStack(IBlockSource dispenser, ItemStack stack) {
         NBTTagCompound tag = stack.getTagCompound();
-        if (tag != null) {
-            ItemStack thing = new ItemStack(
-                Item.getItemById(tag.getInteger("id")),
-                stack.getItemDamage(),
-                tag.getInteger("meta"));
-            if (!tag.getCompoundTag("nbt")
-                .hasNoTags()) {
-                thing.setTagCompound(tag.getCompoundTag("nbt"));
-            }
+        ItemStack stored = BoxContents.read(tag);
+        if (stored != null) {
+            ItemStack thing = stored;
+            thing.stackSize = stack.getItemDamage();
 
             ItemStack extra = null;
             if (thing.stackSize > thing.getMaxStackSize() && stack.stackSize > 1) {

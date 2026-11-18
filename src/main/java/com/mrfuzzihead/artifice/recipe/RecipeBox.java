@@ -8,6 +8,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeItems;
+import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 
 public class RecipeBox implements IRecipe {
@@ -124,9 +125,8 @@ public class RecipeBox implements IRecipe {
                         }
                     }
 
-                    NBTTagCompound tagx = new NBTTagCompound();
-                    tagx.setInteger("meta", thing.getItemDamage());
-                    tagx.setInteger("id", Item.getIdFromItem(thing.getItem()));
+                    // Registry name first, numeric id for older readers (CODE_REVIEW 9.6).
+                    NBTTagCompound tagx = BoxContents.write(new NBTTagCompound(), thing);
                     if (thing.getTagCompound() != null && !thing.getTagCompound()
                         .hasNoTags()) {
                         tagx.setTag("nbt", thing.getTagCompound());

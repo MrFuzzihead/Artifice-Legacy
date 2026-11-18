@@ -9,7 +9,6 @@ import net.minecraftforge.common.MinecraftForge;
 
 import org.apache.logging.log4j.Logger;
 
-import com.mrfuzzihead.artifice.command.CommandCalc;
 import com.mrfuzzihead.artifice.compat.AE2;
 import com.mrfuzzihead.artifice.compat.Buildcraft;
 import com.mrfuzzihead.artifice.compat.CarpentersBlocks;
@@ -66,9 +65,7 @@ public class ArtificeCore {
     private ArrayList<ICompat> compats = new ArrayList<>();
 
     @EventHandler
-    public void serverStarting(FMLServerStartingEvent evt) {
-        evt.registerServerCommand(new CommandCalc());
-    }
+    public void serverStarting(FMLServerStartingEvent evt) {}
 
     @EventHandler
     public void preInit(FMLPreInitializationEvent evt) {

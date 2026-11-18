@@ -3,12 +3,10 @@ package com.mrfuzzihead.artifice.recipe;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.inventory.IInventory;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 
 import com.mrfuzzihead.artifice.ArtificeItems;
-import com.mrfuzzihead.artifice.event.Tracking;
+import com.mrfuzzihead.artifice.util.BoxContents;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
@@ -33,28 +31,20 @@ public class BoxCraftingHandler {
             }
 
             // An empty box has no NBT at all (crafted, or emptied by right-click), and a box from an older or broken
-            // save can name an item id that no longer exists. Both used to NPE here, inside a crafting event that
-            // fires for every craft while the box sits in the grid (CODE_REVIEW 5.17).
-            NBTTagCompound tag = slot.getTagCompound();
-            if (tag == null) {
+            // save can name an item that no longer exists. Both used to NPE here, inside a crafting event that fires
+            // for every craft while the box sits in the grid (CODE_REVIEW 5.17).
+            ItemStack thing = BoxContents.read(slot.getTagCompound());
+            if (thing == null) {
                 continue;
-            }
-
-            Item storedItem = Item.getItemById(tag.getInteger("id"));
-            if (storedItem == null) {
-                continue;
-            }
-
-            ItemStack thing = new ItemStack(storedItem, 1, tag.getInteger("meta"));
-            if (!tag.getCompoundTag("nbt")
-                .hasNoTags()) {
-                thing.setTagCompound(tag.getCompoundTag("nbt"));
             }
 
             // The box's damage is how many items it holds, so crafting with one in the grid has to hand all of them
             // over: this used to give nothing at all unless the contents overflowed a stack, and consumed the box
             // either way (found while fixing 5.17 - the contents were being destroyed).
-            boolean shift = Tracking.sneaks.contains(player.getEntityId());
+            // The server knows the player's sneak state (it is synced every tick), so ask it directly instead of
+            // consulting the id list the sneak packet maintains - that list is never cleaned on logout, so a stale
+            // id could enable shift behaviour for a different player (CODE_REVIEW 5.36).
+            boolean shift = player.isSneaking();
             int boxes = shift ? slot.stackSize : 1;
             int perBox = slot.getItemDamage();
             int items = boxes * perBox;

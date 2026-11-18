@@ -32,7 +32,7 @@ import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
-import com.mrfuzzihead.artifice.event.Tracking;
+import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.BoxCraftingHandler;
@@ -43,6 +43,8 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.util.BoxContents;
+import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
 
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
@@ -87,6 +89,9 @@ public final class ServerGameTests {
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
+        run("slab tooltips", ServerGameTests::checkSlabTooltips);
+        run("box item identity", ServerGameTests::checkBoxItemIdentity);
+        run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
         run("logic redstone", ServerGameTests::checkLogicRedstone);
@@ -605,6 +610,149 @@ public final class ServerGameTests {
      * that never reached +radius, and both branches divided the block count before damaging the tool, so harvesting
      * one or two plants cost no durability at all.
      */
+    /**
+     * CODE_REVIEW 5.26. A hit that the resistance enchantment absorbs damages one armour piece, and it must be a
+     * piece that actually carries the enchantment. The old code picked a random armour slot and accepted any
+     * non-empty one, so it could wear out armour that was not providing the resistance - and it only terminated
+     * because some slot happened to be filled.
+     */
+    private static void checkResistanceArmourDamage() {
+        World world = overworld();
+        EntityPlayer player = net.minecraftforge.common.util.FakePlayerFactory
+            .getMinecraft((net.minecraft.world.WorldServer) world);
+        check("fake player available", player != null);
+        if (player == null) return;
+
+        check("the resistance enchantment is registered", ArtificeEnchants.hasResistance());
+        if (!ArtificeEnchants.hasResistance()) return;
+
+        player.inventory.armorInventory[0] = null;
+        player.inventory.armorInventory[1] = null;
+        player.inventory.armorInventory[2] = null;
+        player.inventory.armorInventory[3] = null;
+
+        ItemStack helmet = new ItemStack(Items.diamond_helmet);
+        helmet.addEnchantment(ArtificeEnchants.enchantmentResistance, 1);
+        ItemStack chestplate = new ItemStack(Items.diamond_chestplate);
+
+        player.setCurrentItemOrArmor(4, helmet);
+        player.setCurrentItemOrArmor(3, chestplate);
+
+        ArtificeEventHandler handler = new ArtificeEventHandler();
+        for (int i = 0; i < 20; i++) {
+            handler.onDamage(
+                new net.minecraftforge.event.entity.living.LivingHurtEvent(
+                    player,
+                    net.minecraft.util.DamageSource.magic,
+                    100.0F));
+        }
+
+        checkEquals("the enchanted helmet takes the wear", 20, helmet.getItemDamage());
+        checkEquals("the unenchanted chestplate is untouched", 0, chestplate.getItemDamage());
+
+        player.setCurrentItemOrArmor(4, null);
+        player.setCurrentItemOrArmor(3, null);
+    }
+
+    /**
+     * CODE_REVIEW 5.29. {@code ItemBlockSlabArtifice} looked its tooltip up by the stack's *unlocalised* name, while
+     * {@code ArtificeRegistry} keys tooltips by (item, damage) registry identity - so the lookup could never hit and
+     * every slab tooltip was dead. The paver/antipaver slabs are the ones with text.
+     */
+    private static void checkSlabTooltips() {
+        int registered = 0;
+
+        for (Object object : new Object[] { ArtificeBlocks.blockBasaltSlab, ArtificeBlocks.blockMarbleSlab }) {
+            Block slabBlock = (Block) object;
+            for (int meta = 2; meta <= 3; meta++) {
+                ItemStack stack = new ItemStack(slabBlock, 1, meta);
+                NameMetaPair key = new NameMetaPair(stack.getItem(), stack.getItemDamage());
+                List<String> lines = ArtificeRegistry.getTooltipMap()
+                    .get(key);
+                check(
+                    slabBlock.getUnlocalizedName() + "@" + meta + " has a tooltip under its registry identity",
+                    lines != null && !lines.isEmpty());
+                registered++;
+            }
+        }
+
+        check("slab tooltips were checked (" + registered + ")", registered == 4);
+
+        // The name-keyed lookup the item block used to do must find nothing: that is the bug, stated as an assertion.
+        ItemStack sample = new ItemStack(ArtificeBlocks.blockBasaltSlab, 1, 2);
+        check(
+            "the unlocalised name is not a tooltip key",
+            ArtificeRegistry.getTooltipMap()
+                .get(new NameMetaPair(sample.getUnlocalizedName(), sample.getItemDamage())) == null
+                || !sample.getUnlocalizedName()
+                    .equals(
+                        sample.getItem()
+                            .getUnlocalizedName(sample)));
+    }
+
+    /**
+     * CODE_REVIEW 9.6. Boxes stored a numeric item id, which is registration-order dependent in 1.7.10, so a box in a
+     * chest could silently become a different item after a pack update. Boxes now store the registry name and prefer
+     * it, with the numeric id kept as a fallback for older boxes.
+     */
+    private static void checkBoxItemIdentity() {
+        World world = overworld();
+        EntityPlayer player = net.minecraftforge.common.util.FakePlayerFactory
+            .getMinecraft((net.minecraft.world.WorldServer) world);
+        check("fake player available", player != null);
+        if (player == null) return;
+
+        InventoryCrafting matrix = new InventoryCrafting(new Container() {
+
+            @Override
+            public boolean canInteractWith(EntityPlayer ignored) {
+                return true;
+            }
+        }, 3, 3);
+        ItemStack crafted = new ItemStack(Items.stick);
+
+        // 1. A box written by the new code carries the registry name and a correct id.
+        ItemStack stored = new ItemStack(Items.gold_ingot);
+        NBTTagCompound tag = BoxContents.write(new NBTTagCompound(), stored);
+        checkEquals("the box stores the registry name", "minecraft:gold_ingot", tag.getString("name"));
+        check("the box still stores a numeric id for older readers", tag.getInteger("id") > 0);
+
+        // 2. The name wins over the id: a stale numeric id that now points at something else must be ignored.
+        NBTTagCompound stale = new NBTTagCompound();
+        stale.setString("name", "minecraft:gold_ingot");
+        stale.setInteger("id", Item.getIdFromItem(Items.stick));
+        stale.setInteger("meta", 0);
+        checkEquals("the registry name takes precedence over a stale id", Items.gold_ingot, BoxContents.item(stale));
+
+        // 3. Legacy box: id only, no name.
+        NBTTagCompound legacy = new NBTTagCompound();
+        legacy.setInteger("id", Item.getIdFromItem(Items.iron_ingot));
+        legacy.setInteger("meta", 0);
+        checkEquals("a legacy box without a name still resolves", Items.iron_ingot, BoxContents.item(legacy));
+
+        // 4. A box naming something this pack does not have resolves to null rather than throwing.
+        NBTTagCompound missing = new NBTTagCompound();
+        missing.setString("name", "artifice:not_an_item");
+        missing.setInteger("id", 32000);
+        check("a box naming a missing item resolves to null", BoxContents.item(missing) == null);
+
+        // ... and crafting with it does nothing, without throwing.
+        ItemStack brokenBox = new ItemStack(ArtificeItems.itemBox, 1, 3);
+        brokenBox.setTagCompound(missing);
+        matrix.setInventorySlotContents(0, brokenBox);
+        new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
+        check("a box naming a missing item is left alone", matrix.getStackInSlot(0) != null);
+
+        // 5. The full path: a name-carrying box yields its item through the crafting handler.
+        ItemStack nameBox = new ItemStack(ArtificeItems.itemBox, 1, 2);
+        nameBox.setTagCompound(BoxContents.write(new NBTTagCompound(), new ItemStack(Items.diamond)));
+        matrix.setInventorySlotContents(0, nameBox);
+
+        int before = countItem(player, Items.diamond);
+        new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
+        checkEquals("a name-carrying box yields its item", before + 2, countItem(player, Items.diamond));
+    }
+
     private static void checkSickleAreaOfEffect() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1149,11 +1297,11 @@ public final class ServerGameTests {
         matrix.setInventorySlotContents(0, stackOfBoxes);
 
         int goldBefore = countItem(player, Items.gold_ingot);
-        Tracking.sneaks.add(player.getEntityId());
+        player.setSneaking(true);
         try {
             new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
         } finally {
-            Tracking.sneaks.remove(Integer.valueOf(player.getEntityId()));
+            player.setSneaking(false);
         }
         checkEquals(
             "sneak-crafting three boxes of four yields twelve",

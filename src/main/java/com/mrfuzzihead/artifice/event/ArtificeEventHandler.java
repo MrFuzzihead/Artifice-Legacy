@@ -65,13 +65,17 @@ public class ArtificeEventHandler {
                     }
                 }
 
-                int toDamage;
-                do {
-                    toDamage = event.entityLiving.worldObj.rand.nextInt(4) + 1;
-                } while (event.entityLiving.getEquipmentInSlot(toDamage) == null);
-
-                event.entityLiving.getEquipmentInSlot(toDamage)
-                    .damageItem(1, event.entityLiving);
+                // Damage one piece per hit, but only pieces that actually carry the enchantment. The old loop picked
+                // a random armour slot and accepted any non-empty one, so it could wear out a piece that was not
+                // providing the resistance at all (and it spun until a slot happened to be non-empty)
+                // (CODE_REVIEW 5.26).
+                for (int slot = 1; slot <= 4; slot++) {
+                    ItemStack armour = event.entityLiving.getEquipmentInSlot(slot);
+                    if (armour != null && EnchantmentHelper
+                        .getEnchantmentLevel(ArtificeEnchants.enchantmentResistance.effectId, armour) > 0) {
+                        armour.damageItem(1, event.entityLiving);
+                    }
+                }
             }
         }
     }
