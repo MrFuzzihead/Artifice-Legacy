@@ -21,17 +21,17 @@
 | 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done |
 | 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | ~~P1~~ done |
 | 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | ~~P1~~ done |
-| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
-| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
-| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
-| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
-| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
-| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
-| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
-| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
-| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
-| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
-| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
+| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** (open - needs a keep-or-delete decision) |
+| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | ~~P2~~ done |
+| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | ~~P2~~ done |
+| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | ~~P2~~ done |
+| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | ~~P2~~ done |
+| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | ~~P2~~ done |
+| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | ~~P2~~ done |
+| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | ~~P2~~ done |
+| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | ~~P2~~ done |
+| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | ~~P3~~ done (deleted) |
+| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 (open - §7.1) |
 | 19 | `ItemSledge` scans the whole crafting table on every block break | perf | ~~P3~~ done |
 | 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
 | 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
@@ -55,9 +55,10 @@ are not codebase defects, but they decide whether the migration boots at all.
 | P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
 | P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
 
-P1 and P2 are **done**, in two halves that still have to be released together: the in-tree allocation and the
-70/71/72 assertion are on `refactor/1.1.6` here (§5.3), and the mixin, its config key and FuzziTweaks'
-`shukaro.artifice` compile dependency are gone on `refactor/drop-artifice-mixin` there. P3 and P4 are untouched.
+P1 and P2 are **done and merged**, in two halves that have to be released together: the in-tree allocation and the
+70/71/72 assertion are in this repo (§5.3), and the mixin, its config key and FuzziTweaks' `shukaro.artifice` compile
+dependency are gone on `refactor/drop-artifice-mixin` there. Cutting 1.1.6 is what releases them as one event. P3 and
+P4 are untouched.
 
 ---
 
@@ -201,7 +202,11 @@ public int hashCode() {
 }
 ```
 
-Acceptance test: `NameMetaPairTest.wildcardPairIsFindableInAHashSet` (`@Ignore`d today).
+Acceptance test: `NameMetaPairTest.wildcardPairIsFindableInAHashSet`, which passes now - a `-1` key and a concrete
+key hash alike and match each other in a `HashSet`, while two concrete keys with different metadata still do not.
+`WorldGenVolcano`'s `replaced` set therefore matches again, which matters if the volcano is ever wired up (§8).
+
+**Status: fixed on `refactor/1.1.6`.**
 
 ### 5.2 `DispenserBehaviorSledge` NPEs on every dispense — **P1**
 
@@ -344,6 +349,11 @@ if (world.blockExists(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ)) {   //
 After the first expansion every neighbour of the origin is already in `done`, so nothing new is ever queued: the
 "adjoined" set is the origin plus its immediate same-class neighbours. The method is currently unused (see §8), so
 this is latent — but it is a trap for whoever wires it up.
+
+**Status: fixed on `refactor/1.1.6`.** The expansion now uses the tile it just popped (`te.xCoord/yCoord/zCoord`),
+and `MiscUtilsTest.getAdjoinedTileEntitiesWalksTheWholeConnectedRun` pins it with a 1x1x4 run of furnaces: the old
+code returned two of the four, the new code returns all four. The method is still unused (§8) - fixing it did not
+give it a caller.
 
 ### 5.6 `ArtificeTickHandler` never dequeues suspendable generators — **P1 (unbounded growth)**
 
@@ -938,8 +948,7 @@ client run to confirm nothing else subscribed.
 
 ## 6. Performance
 
-Status key: **done** = fixed on `refactor/1.1.6` / `perf/hot-paths`; **open** = still there; **left** = deliberately
-not changed.
+Status key: **done** = fixed; **open** = still there; **left** = deliberately not changed.
 
 | Location | Issue | Fix | Status |
 |---|---|---|---|
@@ -1281,12 +1290,12 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ### 10.1 What is covered now
 
-* **Unit (141 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (155 tests, 21 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
-  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, plus the
-  metadata-table invariants and the `@Mod`/`@Instance` agreement.
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
+  metadata-table invariants, and the `@Mod`/`@Instance` agreement.
 * **In-game (1,730 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
@@ -1314,14 +1323,26 @@ The remaining 95% is dominated by classes that cannot be instantiated without a 
 Realistic headless ceiling with the current structure: **~12–15%**. Extracting the frequency helper (§7.2), the
 slab `getHalfSlab` map (§5.29) would each add pure testable surface.
 
-### 10.3 Next tests to add (in priority order)
+### 10.3 What is still untested
 
-1. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
-2. The §7.2 frequency helper, once extracted.
-3. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
-   way).
-4. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
-6. A game-test assertion that breaking an `oreIron` block yields an iron-ore item and drops XP (§5.9).
+The list this section used to hold is complete: the `MiscUtils` six-direction iteration, the §7.2 frequency helper,
+the battery's NBT capacity, the scaffold tower and the `oreIron` drop are all asserted. What is genuinely uncovered
+now is a different set, and it is mostly the client and the paths that need a running game rather than a bootstrapped
+registry:
+
+1. **Client render paths.** `RenderBlocksInverted` (2,830 lines), `OreRenderer`, `FrameRenderer`, `TextureHandler` and
+   every `getIcon` overload. The harness runs a dedicated server (§10.2), so nothing that needs a GL context is
+   reachable. §5.12's off-by-one fix in six `getIcon` implementations is verified by reading, not by a test.
+2. **`BlockFrame` hardness.** `meta + 5` and the blast wall's `meta + 10` are two lines of arithmetic with an
+   out-of-range metadata case (§9.3, §9.4) and no assertion. Cheap to add in-game; the only reason it is not there is
+   that the tiers were never pinned.
+3. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
+   but nothing asserts the property that motivated it: that a query costs O(frequency) and not O(loaded tiles).
+4. **Worldgen determinism.** The blob generators are seeded per chunk; nothing compares a generated chunk against a
+   recorded one, so §7.1's refactor has no safety net beyond "the code looks equivalent".
+5. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
+   through a real connection is not), and `WorldEvent.Unload` handling for the frequency index - tested with a mock
+   world, never with a real dimension unload.
 
 ---
 
