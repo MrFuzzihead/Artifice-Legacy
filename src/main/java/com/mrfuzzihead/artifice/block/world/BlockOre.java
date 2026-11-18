@@ -120,9 +120,9 @@ public class BlockOre extends BlockArtifice {
             && (world.getBlock(x, y + 2, z) == null || world.isAirBlock(x, y + 2, z));
     }
 
-    public int tickRate(World p_149738_1_) {
-        return 30;
-    }
+    // No tickRate() override: nothing in 1.7.10 calls Block.tickRate (World and WorldServer never reference it), so
+    // the old `return 30` had no effect on anything - random ticks are driven by the world's own random-tick speed
+    // (CODE_REVIEW §8).
 
     private void activate(World world, int x, int y, int z) {
         if (this.color != null) {

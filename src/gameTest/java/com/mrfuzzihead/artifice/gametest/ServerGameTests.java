@@ -36,6 +36,7 @@ import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
+import com.mrfuzzihead.artifice.block.world.BlockRock;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
@@ -1435,6 +1436,19 @@ public final class ServerGameTests {
             ArtificeItems.itemResource,
             ArtificeBlocks.blockEnderOre.getItemDropped(0, world.rand, 0));
         checkEquals("ender ore drops ender dust metadata", 2, ArtificeBlocks.blockEnderOre.damageDropped(0));
+
+        // CODE_REVIEW §8 lists BlockRock.isReplaceableOreGen as unreferenced; it is a live vanilla hook -
+        // WorldGenMinable.generate asks the block it is about to replace - so this pins the contract instead.
+        BlockRock rock = (BlockRock) ArtificeBlocks.rockBlocks[0];
+        check(
+            "rock is replaceable ore-gen for stone, so other mods' veins cut through it",
+            rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.stone));
+        check(
+            "rock is replaceable ore-gen for rock, so one layer can cut through another",
+            rock.isReplaceableOreGen(world, 0, 0, 0, rock));
+        check(
+            "rock is not replaceable ore-gen for a third block",
+            !rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.dirt));
     }
 
     /**
