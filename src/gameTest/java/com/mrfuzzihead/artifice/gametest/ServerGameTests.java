@@ -1,9 +1,11 @@
 package com.mrfuzzihead.artifice.gametest;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import net.minecraft.block.Block;
 import net.minecraft.creativetab.CreativeTabs;
@@ -98,6 +100,7 @@ public final class ServerGameTests {
         run("flora metadata", ServerGameTests::checkFloraMetadata);
         run("rock metadata", ServerGameTests::checkRockMetadata);
         run("frame metadata", ServerGameTests::checkFrameMetadata);
+        run("frozen registry names", ServerGameTests::checkFrozenRegistryNames);
         run("slab metadata", ServerGameTests::checkSlabMetadata);
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("lamp stability", ServerGameTests::checkLampStability);
@@ -452,6 +455,117 @@ public final class ServerGameTests {
         } finally {
             site.clear();
         }
+    }
+
+    /**
+     * Every registry name this mod emits, as of 1.1.6. §4 of CODE_REVIEW.md froze them: worlds, config files and
+     * other mods' references all key off these strings, so a rename is a data migration, not a refactor.
+     *
+     * <p>
+     * Adding a block or item means adding a line here. That is the point - it forces the decision to be explicit
+     * and keeps Appendix A honest.
+     * </p>
+     */
+    private static final String[] FROZEN_REGISTRY_NAMES = { "Artifice:bucket", "Artifice:item.artifice.box",
+        "Artifice:item.artifice.coin", "Artifice:item.artifice.craftkit", "Artifice:item.artifice.dye",
+        "Artifice:item.artifice.nugget", "Artifice:item.artifice.resource", "Artifice:item.artifice.sickle.emerald",
+        "Artifice:item.artifice.sickle.gold", "Artifice:item.artifice.sickle.iron",
+        "Artifice:item.artifice.sickle.stone", "Artifice:item.artifice.sickle.wood",
+        "Artifice:item.artifice.sledge.emerald", "Artifice:item.artifice.sledge.gold",
+        "Artifice:item.artifice.sledge.iron", "Artifice:item.artifice.sledge.stone",
+        "Artifice:item.artifice.sledge.wood", "Artifice:item.artifice.steel", "Artifice:item.artifice.upgrade",
+        "Artifice:tile.artifice.attunedredstone.receiver", "Artifice:tile.artifice.attunedredstone.transmitter",
+        "Artifice:tile.artifice.basalt", "Artifice:tile.artifice.basalt.doubleslab",
+        "Artifice:tile.artifice.basalt.slab", "Artifice:tile.artifice.basalt.stairs.brick",
+        "Artifice:tile.artifice.basalt.stairs.cobblestone", "Artifice:tile.artifice.charredlog",
+        "Artifice:tile.artifice.coloredtorch0", "Artifice:tile.artifice.coloredtorch1",
+        "Artifice:tile.artifice.coloredtorch10", "Artifice:tile.artifice.coloredtorch11",
+        "Artifice:tile.artifice.coloredtorch12", "Artifice:tile.artifice.coloredtorch13",
+        "Artifice:tile.artifice.coloredtorch14", "Artifice:tile.artifice.coloredtorch15",
+        "Artifice:tile.artifice.coloredtorch2", "Artifice:tile.artifice.coloredtorch3",
+        "Artifice:tile.artifice.coloredtorch4", "Artifice:tile.artifice.coloredtorch5",
+        "Artifice:tile.artifice.coloredtorch6", "Artifice:tile.artifice.coloredtorch7",
+        "Artifice:tile.artifice.coloredtorch8", "Artifice:tile.artifice.coloredtorch9",
+        "Artifice:tile.artifice.detector", "Artifice:tile.artifice.enderore", "Artifice:tile.artifice.enderore.glowing",
+        "Artifice:tile.artifice.flora", "Artifice:tile.artifice.flora.lily", "Artifice:tile.artifice.fluid.bitumen",
+        "Artifice:tile.artifice.fluid.creosote", "Artifice:tile.artifice.fluid.fuel",
+        "Artifice:tile.artifice.fluid.oil", "Artifice:tile.artifice.frame", "Artifice:tile.artifice.glasswall",
+        "Artifice:tile.artifice.glasswalldark", "Artifice:tile.artifice.glowsand", "Artifice:tile.artifice.heatingcoil",
+        "Artifice:tile.artifice.lamp.black", "Artifice:tile.artifice.lamp.blue", "Artifice:tile.artifice.lamp.brown",
+        "Artifice:tile.artifice.lamp.cyan", "Artifice:tile.artifice.lamp.gray", "Artifice:tile.artifice.lamp.green",
+        "Artifice:tile.artifice.lamp.lightblue", "Artifice:tile.artifice.lamp.lightgray",
+        "Artifice:tile.artifice.lamp.lime", "Artifice:tile.artifice.lamp.magenta", "Artifice:tile.artifice.lamp.orange",
+        "Artifice:tile.artifice.lamp.pink", "Artifice:tile.artifice.lamp.purple", "Artifice:tile.artifice.lamp.red",
+        "Artifice:tile.artifice.lamp.white", "Artifice:tile.artifice.lamp.yellow",
+        "Artifice:tile.artifice.lampinverted.black", "Artifice:tile.artifice.lampinverted.blue",
+        "Artifice:tile.artifice.lampinverted.brown", "Artifice:tile.artifice.lampinverted.cyan",
+        "Artifice:tile.artifice.lampinverted.gray", "Artifice:tile.artifice.lampinverted.green",
+        "Artifice:tile.artifice.lampinverted.lightblue", "Artifice:tile.artifice.lampinverted.lightgray",
+        "Artifice:tile.artifice.lampinverted.lime", "Artifice:tile.artifice.lampinverted.magenta",
+        "Artifice:tile.artifice.lampinverted.orange", "Artifice:tile.artifice.lampinverted.pink",
+        "Artifice:tile.artifice.lampinverted.purple", "Artifice:tile.artifice.lampinverted.red",
+        "Artifice:tile.artifice.lampinverted.white", "Artifice:tile.artifice.lampinverted.yellow",
+        "Artifice:tile.artifice.limestone.bluish", "Artifice:tile.artifice.limestone.bluish.doubleslab",
+        "Artifice:tile.artifice.limestone.bluish.slab", "Artifice:tile.artifice.limestone.bluish.stairs.brick",
+        "Artifice:tile.artifice.limestone.bluish.stairs.cobblestone", "Artifice:tile.artifice.limestone.brown",
+        "Artifice:tile.artifice.limestone.brown.doubleslab", "Artifice:tile.artifice.limestone.brown.slab",
+        "Artifice:tile.artifice.limestone.brown.stairs.brick",
+        "Artifice:tile.artifice.limestone.brown.stairs.cobblestone", "Artifice:tile.artifice.limestone.gray",
+        "Artifice:tile.artifice.limestone.gray.doubleslab", "Artifice:tile.artifice.limestone.gray.slab",
+        "Artifice:tile.artifice.limestone.gray.stairs.brick",
+        "Artifice:tile.artifice.limestone.gray.stairs.cobblestone", "Artifice:tile.artifice.limestone.greenish",
+        "Artifice:tile.artifice.limestone.greenish.doubleslab", "Artifice:tile.artifice.limestone.greenish.slab",
+        "Artifice:tile.artifice.limestone.greenish.stairs.brick",
+        "Artifice:tile.artifice.limestone.greenish.stairs.cobblestone", "Artifice:tile.artifice.limestone.lightgray",
+        "Artifice:tile.artifice.limestone.lightgray.doubleslab", "Artifice:tile.artifice.limestone.lightgray.slab",
+        "Artifice:tile.artifice.limestone.lightgray.stairs.brick",
+        "Artifice:tile.artifice.limestone.lightgray.stairs.cobblestone", "Artifice:tile.artifice.limestone.reddish",
+        "Artifice:tile.artifice.limestone.reddish.doubleslab", "Artifice:tile.artifice.limestone.reddish.slab",
+        "Artifice:tile.artifice.limestone.reddish.stairs.brick",
+        "Artifice:tile.artifice.limestone.reddish.stairs.cobblestone", "Artifice:tile.artifice.limestone.tan",
+        "Artifice:tile.artifice.limestone.tan.doubleslab", "Artifice:tile.artifice.limestone.tan.slab",
+        "Artifice:tile.artifice.limestone.tan.stairs.brick", "Artifice:tile.artifice.limestone.tan.stairs.cobblestone",
+        "Artifice:tile.artifice.logicredstone", "Artifice:tile.artifice.marble",
+        "Artifice:tile.artifice.marble.doubleslab", "Artifice:tile.artifice.marble.slab",
+        "Artifice:tile.artifice.marble.stairs.brick", "Artifice:tile.artifice.marble.stairs.cobblestone",
+        "Artifice:tile.artifice.niter", "Artifice:tile.artifice.nuclearbattery", "Artifice:tile.artifice.orecoal",
+        "Artifice:tile.artifice.orecopper", "Artifice:tile.artifice.orediamond", "Artifice:tile.artifice.oreemerald",
+        "Artifice:tile.artifice.oreender", "Artifice:tile.artifice.oreender.glowing", "Artifice:tile.artifice.oregold",
+        "Artifice:tile.artifice.oreiron", "Artifice:tile.artifice.orelapis", "Artifice:tile.artifice.orelead",
+        "Artifice:tile.artifice.orenickel", "Artifice:tile.artifice.oreredstone",
+        "Artifice:tile.artifice.oreredstone.glowing", "Artifice:tile.artifice.oresilver",
+        "Artifice:tile.artifice.oresulfur", "Artifice:tile.artifice.oretin", "Artifice:tile.artifice.oreuranium",
+        "Artifice:tile.artifice.reinforced", "Artifice:tile.artifice.scaffold", "Artifice:tile.artifice.steel",
+        "Artifice:tile.artifice.sulfur", "Artifice:tile.artifice.tephra", "Artifice:tile.artifice.uranium", };
+
+    /**
+     * The §4 freeze, enforced. A rename would silently turn every existing block into a missing-mapping and every
+     * config reference into a no-op, so it should fail a test rather than a world.
+     */
+    private static void checkFrozenRegistryNames() {
+        Set<String> expected = new TreeSet<>(Arrays.asList(FROZEN_REGISTRY_NAMES));
+        Set<String> actual = new TreeSet<>();
+        for (Object key : Block.blockRegistry.getKeys()) {
+            String name = key.toString();
+            if (name.startsWith("Artifice:")) {
+                actual.add(name);
+            }
+        }
+        for (Object key : Item.itemRegistry.getKeys()) {
+            String name = key.toString();
+            if (name.startsWith("Artifice:")) {
+                actual.add(name);
+            }
+        }
+
+        Set<String> missing = new TreeSet<>(expected);
+        missing.removeAll(actual);
+        Set<String> added = new TreeSet<>(actual);
+        added.removeAll(expected);
+
+        check("no frozen registry name disappeared " + missing, missing.isEmpty());
+        check("no registry name was added without freezing it here " + added, added.isEmpty());
+        checkEquals("the frozen registry name count", expected.size(), actual.size());
     }
 
     private static void checkFrameMetadata() {

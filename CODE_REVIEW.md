@@ -1403,8 +1403,10 @@ names the mod emits today, and the names §4 keeps.
 | Craft kit | `Artifice:item.artifice.craftkit` |
 | Bucket | `Artifice:item.bucket` |
 
-Pair-count sanity check: the game test asserts uniqueness across **both** registries and that every block has an
-`ItemBlock` under the same name.
+There are **155** names in total (blocks and items together). The game test asserts uniqueness across both registries,
+that every block has an `ItemBlock` under the same name, and - since this appendix is a freeze (§4) - that the set
+matches the list in `ServerGameTests.FROZEN_REGISTRY_NAMES` exactly. Adding a block means adding a line there, which
+is the point: it makes the decision explicit and keeps this table honest.
 
 ## Appendix B — Config surface
 
