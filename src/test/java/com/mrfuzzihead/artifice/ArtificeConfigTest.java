@@ -116,4 +116,65 @@ public class ArtificeConfigTest {
         Assert.assertEquals(rf, ArtificeConfig.RFperFurnaceHeat);
         Assert.assertEquals(coil, ArtificeConfig.heatingCoilRate);
     }
+
+    @Test
+    public void anEmptyDimensionListIsSilent() {
+        // A fresh install writes "", which used to split to [""], fail parseInt and log a warning on every launch.
+        Assert.assertEquals(0, ArtificeConfig.parseDimensionList("").length);
+        Assert.assertEquals(0, ArtificeConfig.parseDimensionList("   ").length);
+        Assert.assertEquals(0, ArtificeConfig.parseDimensionList(null).length);
+        Assert.assertEquals(0, ArtificeConfig.parseDimensionList(",").length);
+    }
+
+    @Test
+    public void theDimensionListIgnoresBlanksAndJunk() {
+        int[] ids = ArtificeConfig.parseDimensionList("0, -1 , 7");
+
+        Assert.assertArrayEquals(new int[] { 0, -1, 7 }, ids);
+        Assert.assertArrayEquals(new int[] { 0, 7 }, ArtificeConfig.parseDimensionList("0,,7"));
+        Assert.assertArrayEquals(new int[] { 3 }, ArtificeConfig.parseDimensionList("3,nonsense"));
+        Assert.assertArrayEquals(new int[] { 0, -1 }, ArtificeConfig.parseDimensionList("0,,-1,"));
+    }
+
+    @Test
+    public void theStoneListUsesSemicolons() {
+        // The config comment used to say "Name:Meta" while the parser split on ';' - anyone following the comment
+        // got a parse failure and a warning.
+        java.util.List<String[]> pairs = ArtificeConfig.parseStonePairs("minecraft:stone;0,modid:block;3");
+
+        Assert.assertEquals(2, pairs.size());
+        Assert.assertArrayEquals(new String[] { "minecraft:stone", "0" }, pairs.get(0));
+        Assert.assertArrayEquals(new String[] { "modid:block", "3" }, pairs.get(1));
+    }
+
+    @Test
+    public void theStoneListToleratesBlanksAndBadSeparators() {
+        Assert.assertTrue(
+            ArtificeConfig.parseStonePairs("")
+                .isEmpty());
+        Assert.assertTrue(
+            ArtificeConfig.parseStonePairs(null)
+                .isEmpty());
+        Assert.assertTrue(
+            "only blanks",
+            ArtificeConfig.parseStonePairs(" , ")
+                .isEmpty());
+
+        java.util.List<String[]> bad = ArtificeConfig.parseStonePairs("minecraft:stone");
+        Assert.assertEquals("a pair with no separator is reported with a null meta", 1, bad.size());
+        Assert.assertNull(bad.get(0)[1]);
+    }
+
+    @Test
+    public void clientKeysAreReadByTheCommonPass() {
+        // One Configuration per launch now: the client keys are read here instead of by a second initClient pass.
+        ArtificeConfig.readCommon(new Configuration());
+        Assert.assertTrue("tooltips default to on", ArtificeConfig.tooltips);
+
+        Configuration c = new Configuration();
+        c.get("Client", "Enable Tooltips", true)
+            .set(false);
+        ArtificeConfig.readCommon(c);
+        Assert.assertFalse(ArtificeConfig.tooltips);
+    }
 }

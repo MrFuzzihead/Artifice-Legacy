@@ -1,5 +1,8 @@
 package com.mrfuzzihead.artifice;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import net.minecraft.block.Block;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.common.config.Configuration;
@@ -390,13 +393,13 @@ public class ArtificeConfig {
         c.get(
             "Compatibility",
             "Marble List",
-            "").comment = "Comma-seperated list of Name:Meta pairs to add to a cycling chain of 1:1 marble exchange recipes. No spaces or quotes, meta is required.";
+            "").comment = "Comma-separated list of Name;Meta pairs (for example minecraft:stone;0,modid:block;3) to add to a cycling chain of 1:1 marble exchange recipes. No spaces or quotes, meta is required.";
         basaltList = c.get("Compatibility", "Basalt List", "")
             .getString();
         c.get(
             "Compatibility",
             "Basalt List",
-            "").comment = "Comma-seperated list of Name:Meta pairs to add to a cycling chain of 1:1 basalt exchange recipes. No spaces or quotes, meta is required.";
+            "").comment = "Comma-separated list of Name;Meta pairs (for example minecraft:stone;0,modid:block;3) to add to a cycling chain of 1:1 basalt exchange recipes. No spaces or quotes, meta is required.";
         limitUpgrades = c.get("Upgrades", "Limit Upgrades", true)
             .getBoolean();
         c.get(
@@ -485,6 +488,16 @@ public class ArtificeConfig {
         steelOreDict = c.get("Recipes", "Register steel entries to the ore dictionary", true)
             .getBoolean();
 
+        // Client keys. They used to be read by a second Configuration over the same file from preInit, on both
+        // sides, which meant four file writes per launch and a meaningless category on the server (CODE_REVIEW 5.24).
+        // They are read here, once, and simply unused on a server.
+        tooltips = c.get("Client", "Enable Tooltips", true)
+            .getBoolean();
+        c.get("Client", "Enable Tooltips", true).comment = "Set to false to turn off tooltips";
+        flavorText = c.get("Client", "Tooltip Flavor Text", true)
+            .getBoolean();
+        c.get("Client", "Tooltip Flavor Text", true).comment = "Set to false to turn off flavor text in tooltips";
+
         // Height ranges feed rand.nextInt(max - min + 1). An inverted range throws out of worldgen and a negative
         // minimum indexes below the world, so make max >= min for every pair (CODE_REVIEW 5.21).
         maxOfHeightRange(rockLayersMinHeight, rockLayersMaxHeight);
@@ -500,38 +513,95 @@ public class ArtificeConfig {
         }
     }
 
-    public static void initClient(FMLPreInitializationEvent evt) {
-        Configuration c = new Configuration(evt.getSuggestedConfigurationFile());
-
-        try {
-            c.load();
-            tooltips = c.get("Client", "Enable Tooltips", true)
-                .getBoolean();
-            c.get("Client", "Enable Tooltips", true).comment = "Set to false to turn off tooltips";
-            flavorText = c.get("Client", "Tooltip Flavor Text", true)
-                .getBoolean();
-            c.get("Client", "Tooltip Flavor Text", true).comment = "Set to false to turn off flavor text in tooltips";
-        } catch (Exception var6) {
-            ArtificeCore.logger.error("Couldn't load the config file");
-            var6.printStackTrace();
-        } finally {
-            c.save();
-        }
-    }
+    /**
+     * @deprecated the client keys are read by {@link #readCommon(Configuration)}; this exists only so an old caller
+     *             compiles. It does nothing.
+     */
+    @Deprecated
+    public static void initClient(FMLPreInitializationEvent evt) {}
 
     private static void setDimBlacklist() {
-        if (dimensionBlacklist != null) {
-            String blacklist = dimensionBlacklist.trim();
+        int[] ids = parseDimensionList(dimensionBlacklist);
 
-            for (String dim : blacklist.split(",")) {
-                try {
-                    int dimID = Integer.parseInt(dim);
-                    ArtificeRegistry.registerDimensionBlacklist(dimID);
-                } catch (Exception var6) {
-                    ArtificeCore.logger.warn("Failed to load the dimension blacklist");
+        for (int dimID : ids) {
+            ArtificeRegistry.registerDimensionBlacklist(dimID);
+        }
+
+        // Only warn when something was actually unparseable: an empty list is the default, not a mistake, and it
+        // used to log "Failed to load the dimension blacklist" on every fresh install ("" split is [""]).
+        int configured = 0;
+        if (dimensionBlacklist != null) {
+            for (String part : dimensionBlacklist.split(",")) {
+                if (!part.trim()
+                    .isEmpty()) {
+                    configured++;
                 }
             }
         }
+
+        if (configured != ids.length) {
+            ArtificeCore.logger.warn("Failed to load the dimension blacklist");
+        }
+    }
+
+    /**
+     * @return the dimension ids in a comma-separated list, ignoring blanks and unparseable entries; empty for empty
+     *         or null input
+     */
+    static int[] parseDimensionList(String configured) {
+        if (configured == null || configured.trim()
+            .isEmpty()) {
+            return new int[0];
+        }
+
+        List<Integer> ids = new ArrayList<>();
+        for (String part : configured.split(",")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            try {
+                ids.add(Integer.parseInt(trimmed));
+            } catch (NumberFormatException ignored) {
+                // counted by the caller so it can warn once
+            }
+        }
+
+        int[] out = new int[ids.size()];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = ids.get(i);
+        }
+
+        return out;
+    }
+
+    /**
+     * @return the {@code {name, meta}} pairs in the configured stone list, ignoring blanks; the format is the one the
+     *         config comment documents, {@code name;meta,name;meta}
+     */
+    static List<String[]> parseStonePairs(String configured) {
+        List<String[]> pairs = new ArrayList<>();
+        if (configured == null) {
+            return pairs;
+        }
+
+        for (String part : configured.split(",")) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            String[] halves = trimmed.split(";");
+            if (halves.length != 2) {
+                pairs.add(new String[] { trimmed, null });
+                continue;
+            }
+
+            pairs.add(new String[] { halves[0].trim(), halves[1].trim() });
+        }
+
+        return pairs;
     }
 
     private static void setStoneList(boolean isMarble) {
@@ -546,10 +616,10 @@ public class ArtificeConfig {
             stoneList = basaltList.trim();
         }
 
-        for (String pair : stoneList.split(",")) {
+        for (String[] pair : parseStonePairs(stoneList)) {
             try {
-                String itemName = pair.split(";")[0];
-                Integer meta = Integer.parseInt(pair.split(";")[1]);
+                String itemName = pair[0];
+                Integer meta = Integer.parseInt(pair[1]);
                 if (isMarble) {
                     ArtificeRegistry
                         .registerMarbleType(new ItemStack((Block) Block.blockRegistry.getObject(itemName), 1, meta));
