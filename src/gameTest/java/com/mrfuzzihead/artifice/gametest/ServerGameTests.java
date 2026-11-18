@@ -49,6 +49,8 @@ import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
 import com.mrfuzzihead.artifice.util.BoxContents;
+import com.mrfuzzihead.artifice.util.ComparableItemStack;
+import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
@@ -100,6 +102,7 @@ public final class ServerGameTests {
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
         run("box item identity", ServerGameTests::checkBoxItemIdentity);
+        run("box stack comparison", ServerGameTests::checkBoxStackComparison);
         run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
@@ -909,6 +912,60 @@ public final class ServerGameTests {
         int before = countItem(player, Items.diamond);
         new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
         checkEquals("a name-carrying box yields its item", before + 2, countItem(player, Items.diamond));
+    }
+
+    /**
+     * The value types behind {@code RecipeBox.matches}: two stacks are "the same item" if they share an
+     * ore-dictionary id or the same item and damage, and the NBT variant adds the tag to that.
+     *
+     * <p>
+     * Headless tests cannot cover this - the harness has no bootstrapped item registry, so there is no
+     * {@code Items.diamond} to compare. The comparisons matter because they are used as recipe matches: a wrong
+     * {@code true} crafts the wrong thing, a {@code false} refuses a legal recipe.
+     * </p>
+     */
+    private static void checkBoxStackComparison() {
+        ItemStack diamond = new ItemStack(Items.diamond);
+        ItemStack tagged = new ItemStack(Items.diamond);
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setInteger("artifice:test", 7);
+        tagged.setTagCompound(tag);
+
+        ComparableItemStack plain = new ComparableItemStack(diamond);
+        ComparableItemStack samePlain = new ComparableItemStack(new ItemStack(Items.diamond));
+        ComparableItemStackNBT withTag = new ComparableItemStackNBT(tagged);
+
+        check("the same item and damage compare equal", plain.isItemEqual(samePlain));
+        check(
+            "stack equality includes the count",
+            !plain.isStackEqual(new ComparableItemStack(new ItemStack(Items.diamond, 2))));
+        check(
+            "a different damage is a different item",
+            !plain.isItemEqual(new ComparableItemStack(new ItemStack(Items.dye, 3))));
+
+        // The NBT half, including the case that used to be a ClassCastException: a tagged key against a plain stack.
+        check("the item half of a tagged stack still matches", withTag.isItemEqual(plain));
+        check("the tag half does not", !withTag.isStackEqual(plain));
+        check("an NBT stack against a plain one is false, not a crash", !withTag.isStackEqual(plain));
+        check("an NBT stack against null is false", !withTag.isStackEqual(null));
+
+        ItemStack sameTag = new ItemStack(Items.diamond);
+        sameTag.setTagCompound((NBTTagCompound) tag.copy());
+        check("equal tags match", withTag.isStackEqual(new ComparableItemStackNBT(sameTag)));
+
+        // A stack built from null is invalid rather than a landmine.
+        ComparableItemStack invalid = new ComparableItemStack((ItemStack) null);
+        check("a stack built from null is invalid", !invalid.isStackValid());
+        check(
+            "a stack built from null compares false rather than throwing",
+            !invalid.isItemEqual(plain) && !plain.isItemEqual(invalid));
+
+        ItemStack restored = withTag.toItemStack();
+        check(
+            "the tag survives the round trip",
+            restored != null && restored.getTagCompound() != null
+                && restored.getTagCompound()
+                    .getInteger("artifice:test") == 7);
     }
 
     private static void checkSickleAreaOfEffect() {
