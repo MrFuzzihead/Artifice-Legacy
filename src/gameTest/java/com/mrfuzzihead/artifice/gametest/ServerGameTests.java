@@ -21,6 +21,7 @@ import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
@@ -36,6 +37,7 @@ import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
+import com.mrfuzzihead.artifice.block.world.BlockRock;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
@@ -48,7 +50,10 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.tile.TileFurnaceWrapper;
 import com.mrfuzzihead.artifice.util.BoxContents;
+import com.mrfuzzihead.artifice.util.ComparableItemStack;
+import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
@@ -100,6 +105,7 @@ public final class ServerGameTests {
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
         run("box item identity", ServerGameTests::checkBoxItemIdentity);
+        run("box stack comparison", ServerGameTests::checkBoxStackComparison);
         run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
@@ -721,6 +727,22 @@ public final class ServerGameTests {
             site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
             site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockScaffold, 0);
 
+            // The collision box is inset so a climber does not sink into the scaffold; the climbable face starts just
+            // inside the block (the two constants CODE_REVIEW §7.7 asked to name).
+            AxisAlignedBB box = ArtificeBlocks.blockScaffold
+                .getCollisionBoundingBoxFromPool(world, site.x, site.y, site.z);
+            check("the scaffold has a collision box", box != null);
+            if (box != null) {
+                Block scaffold = ArtificeBlocks.blockScaffold;
+                double inset = 0.125;
+                double dx = (box.minX - site.x) - (scaffold.getBlockBoundsMinX() + inset);
+                double dz = (box.minZ - site.z) - (scaffold.getBlockBoundsMinZ() + inset);
+                double dh = (box.maxY - box.minY) - (scaffold.getBlockBoundsMaxY() - scaffold.getBlockBoundsMinY());
+
+                check("the collision box is inset by an eighth of a block", Math.abs(dx) < 1e-6 && Math.abs(dz) < 1e-6);
+                check("the collision box keeps the block's height", Math.abs(dh) < 1e-6);
+            }
+
             checkEquals(
                 "scaffold on a solid floor stays",
                 ArtificeBlocks.blockScaffold,
@@ -909,6 +931,60 @@ public final class ServerGameTests {
         int before = countItem(player, Items.diamond);
         new BoxCraftingHandler().onCrafting(new ItemCraftedEvent(player, crafted, matrix));
         checkEquals("a name-carrying box yields its item", before + 2, countItem(player, Items.diamond));
+    }
+
+    /**
+     * The value types behind {@code RecipeBox.matches}: two stacks are "the same item" if they share an
+     * ore-dictionary id or the same item and damage, and the NBT variant adds the tag to that.
+     *
+     * <p>
+     * Headless tests cannot cover this - the harness has no bootstrapped item registry, so there is no
+     * {@code Items.diamond} to compare. The comparisons matter because they are used as recipe matches: a wrong
+     * {@code true} crafts the wrong thing, a {@code false} refuses a legal recipe.
+     * </p>
+     */
+    private static void checkBoxStackComparison() {
+        ItemStack diamond = new ItemStack(Items.diamond);
+        ItemStack tagged = new ItemStack(Items.diamond);
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setInteger("artifice:test", 7);
+        tagged.setTagCompound(tag);
+
+        ComparableItemStack plain = new ComparableItemStack(diamond);
+        ComparableItemStack samePlain = new ComparableItemStack(new ItemStack(Items.diamond));
+        ComparableItemStackNBT withTag = new ComparableItemStackNBT(tagged);
+
+        check("the same item and damage compare equal", plain.isItemEqual(samePlain));
+        check(
+            "stack equality includes the count",
+            !plain.isStackEqual(new ComparableItemStack(new ItemStack(Items.diamond, 2))));
+        check(
+            "a different damage is a different item",
+            !plain.isItemEqual(new ComparableItemStack(new ItemStack(Items.dye, 3))));
+
+        // The NBT half, including the case that used to be a ClassCastException: a tagged key against a plain stack.
+        check("the item half of a tagged stack still matches", withTag.isItemEqual(plain));
+        check("the tag half does not", !withTag.isStackEqual(plain));
+        check("an NBT stack against a plain one is false, not a crash", !withTag.isStackEqual(plain));
+        check("an NBT stack against null is false", !withTag.isStackEqual(null));
+
+        ItemStack sameTag = new ItemStack(Items.diamond);
+        sameTag.setTagCompound((NBTTagCompound) tag.copy());
+        check("equal tags match", withTag.isStackEqual(new ComparableItemStackNBT(sameTag)));
+
+        // A stack built from null is invalid rather than a landmine.
+        ComparableItemStack invalid = new ComparableItemStack((ItemStack) null);
+        check("a stack built from null is invalid", !invalid.isStackValid());
+        check(
+            "a stack built from null compares false rather than throwing",
+            !invalid.isItemEqual(plain) && !plain.isItemEqual(invalid));
+
+        ItemStack restored = withTag.toItemStack();
+        check(
+            "the tag survives the round trip",
+            restored != null && restored.getTagCompound() != null
+                && restored.getTagCompound()
+                    .getInteger("artifice:test") == 7);
     }
 
     private static void checkSickleAreaOfEffect() {
@@ -1258,6 +1334,23 @@ public final class ServerGameTests {
                 }
             }
             check("coil heat reached at least one furnace", burnTime > 0);
+
+            // The per-furnace cap, through the wrapper the coil actually talks to. A furnace that is already full
+            // must refuse heat rather than lose it, and one item's worth is what MAX_HEAT buys at the default rate.
+            TileEntityFurnace capped = (TileEntityFurnace) world.getTileEntity(
+                site.x + ForgeDirection.UP.offsetX,
+                site.y + ForgeDirection.UP.offsetY,
+                site.z + ForgeDirection.UP.offsetZ);
+            if (capped != null) {
+                TileFurnaceWrapper wrapper = new TileFurnaceWrapper(capped);
+                checkEquals("the wrapper reports the constant cap", TileFurnaceWrapper.MAX_HEAT, wrapper.getMaxHeat());
+                check("a furnace can take heat", wrapper.receiveHeat(TileFurnaceWrapper.MAX_HEAT) > 0);
+                checkEquals("a full furnace takes no more heat", 0, wrapper.receiveHeat(100));
+                checkEquals(
+                    "the cap is in RF, so the heat reads back as MAX_HEAT",
+                    TileFurnaceWrapper.MAX_HEAT,
+                    wrapper.getHeat());
+            }
             check("coil drains RF while heating", coil.getEnergyStored(ForgeDirection.UP) < 1600);
 
             // CODE_REVIEW 5.4: the neighbour helpers indexed the side array twice, so a random subset of the six
@@ -1378,6 +1471,19 @@ public final class ServerGameTests {
             ArtificeItems.itemResource,
             ArtificeBlocks.blockEnderOre.getItemDropped(0, world.rand, 0));
         checkEquals("ender ore drops ender dust metadata", 2, ArtificeBlocks.blockEnderOre.damageDropped(0));
+
+        // CODE_REVIEW §8 lists BlockRock.isReplaceableOreGen as unreferenced; it is a live vanilla hook -
+        // WorldGenMinable.generate asks the block it is about to replace - so this pins the contract instead.
+        BlockRock rock = (BlockRock) ArtificeBlocks.rockBlocks[0];
+        check(
+            "rock is replaceable ore-gen for stone, so other mods' veins cut through it",
+            rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.stone));
+        check(
+            "rock is replaceable ore-gen for rock, so one layer can cut through another",
+            rock.isReplaceableOreGen(world, 0, 0, 0, rock));
+        check(
+            "rock is not replaceable ore-gen for a third block",
+            !rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.dirt));
     }
 
     /**

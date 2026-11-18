@@ -39,10 +39,15 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.registry.GameRegistry.Type;
 
+/**
+ * The annotation reads the constants below rather than repeating them: annotation values must be compile-time
+ * constants, and these are. Before, the id, name and version each appeared twice (once here, once as a field) with
+ * nothing keeping them in step; {@code RegistrationInvariantsTest} now pins the pair (CODE_REVIEW §8).
+ */
 @Mod(
-    modid = "Artifice",
-    name = "Artifice",
-    version = "1.7.10R1.1.4",
+    modid = ArtificeCore.modID,
+    name = ArtificeCore.modName,
+    version = ArtificeCore.modVersion,
     dependencies = "required-after:CoFHCore;after:BuildCraft|Core;after:Forestry;after:MineFactoryReloaded;after:Thaumcraft;after:Railcraft")
 public class ArtificeCore {
 
@@ -52,14 +57,13 @@ public class ArtificeCore {
     public static CommonProxy proxy;
     public static final String modID = "Artifice";
     public static final String modName = "Artifice";
-    public static final String modChannel = "Artifice";
     public static final String modVersion = "1.7.10R1.1.4";
     public static Logger logger;
     public static ArtificeEventHandler eventHandler;
     public static ArtificeTickHandler tickHandler;
     public static final ArtificeCreativeTab mainTab = new ArtificeCreativeTab("Artifice");
     public static final ArtificeCreativeTab worldTab = new ArtificeCreativeTab("Artifice Worldgen");
-    @Instance("Artifice")
+    @Instance(ArtificeCore.modID)
     public static ArtificeCore instance;
     private ArrayList<ICompat> compats = new ArrayList<>();
 

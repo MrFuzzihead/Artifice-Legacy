@@ -157,14 +157,21 @@ public class BlockLamp extends BlockArtifice {
     }
 
     @SideOnly(Side.CLIENT)
+    /**
+     * The tint offsets. A normal lamp darkens the colour and lets the metadata (the light level) bring it back up;
+     * an inverted lamp starts slightly brightened and dims as its metadata rises.
+     */
+    private static final int TINT_DARKENED = -40;
+    private static final int TINT_INVERTED = 5;
+
     public int getRenderColor(int meta) {
-        return this.inverted ? this.color.toAdjusted(5) : this.color.toAdjusted(-40);
+        return this.inverted ? this.color.toAdjusted(TINT_INVERTED) : this.color.toAdjusted(TINT_DARKENED);
     }
 
     @SideOnly(Side.CLIENT)
     public int colorMultiplier(IBlockAccess block, int x, int y, int z) {
-        return this.inverted ? this.color.toAdjusted(5 - block.getBlockMetadata(x, y, z))
-            : this.color.toAdjusted(block.getBlockMetadata(x, y, z) - 40);
+        return this.inverted ? this.color.toAdjusted(TINT_INVERTED - block.getBlockMetadata(x, y, z))
+            : this.color.toAdjusted(block.getBlockMetadata(x, y, z) + TINT_DARKENED);
     }
 
     public int getLightValue(IBlockAccess world, int x, int y, int z) {

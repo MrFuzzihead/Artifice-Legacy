@@ -36,6 +36,10 @@
 | 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
 | 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
 | 22 | `MiscUtils`' neighbour helpers allocated a boxed array and took a lock per call (§6.2) | perf | ~~P3~~ done |
+| 23 | `ComparableItemStackNBT.isStackEqual` casts without a check, and `isItemEqual` dereferences a null item (§8) | bug | ~~P2~~ done |
+| 24 | Mod id, name and version each existed twice, plus an unused `modChannel` (§8) | cleanup | ~~P3~~ done |
+| 25 | Raw `ArrayList`/`ArrayDeque` casts throughout worldgen and the tick handler (§7.6) | cleanup | ~~P3~~ done |
+| 26 | Six unnamed literals on hot or hard-to-read paths (§7.7) | cleanup | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -1074,22 +1078,37 @@ registration order (and therefore the block/item name coupling) very hard to rea
 roughly 60% and make it impossible to forget a subtype. Note `ItemSledge`/`ItemSickle` look up tooltips with
 `getItemDamage() == 0` while `ItemBlockArtifice` uses the real damage — a helper would standardise this.
 
-### 7.6 Unchecked collections
+### 7.6 Unchecked collections - **done**
 
-`ArtificeTickHandler` (`TMap<Integer, ArrayDeque<ISuspendableGen>>` used with raw casts), `WorldGenSulfur/Desert`
-(`new ArrayList()` raw), `ArtificeRegistry` (`ArrayList<Object>` input lists), `ItemSledge`'s recipe list. The
-`MiscUtils` `Integer[]` shuffles are gone (§6.2), and so is the `compat/Forestry` reflection cast - that class now
-compiles against the real API (§9.10). Most of these are decompiler
+`ArtificeTickHandler` and the four suspendable generators (`WorldGenCluster`, `WorldGenSulfur`, `WorldGenDesert`,
+`WorldGenCave`) held `TMap<ChunkCoord, ArrayList<BlockCoord>>` and then cast the value out of it:
+`((ArrayList) this.toGen.get(chunk)).add(t)`. The cast asserted what the declaration already said, and would have
+turned a declaration change into a `ClassCastException` at worldgen time. `ItemSledge`'s ore-dictionary ingredient
+list was checked as `instanceof ArrayList`; it is a `List` of candidates where the first stands for the slot.
+
+All of them are parameterised now, with no behaviour change. What is left of §7.6 is `ArtificeRegistry`'s
+`ArrayList<Object>` input lists, which come from `ShapelessOreRecipe.getInput()` - a raw `ArrayList` in 1.7.10, so
+there is nothing to parameterise at the source. Most of these are decompiler
 artefacts and are safe to parameterise.
 
-### 7.7 Magic numbers that deserve names
+### 7.7 Magic numbers that deserve names - **done**
 
-* `BlockOre.sparkle` hardcodes ore indices 5 (redstone) and 13 (ender). `RegistrationInvariantsTest` now pins the
-  table order, but the code should reference named constants.
-* `TileFurnaceWrapper.getMaxHeat()` returns `1600` (a literal).
-* `ArtificeEventHandler` uses `reslvl * 7 / 100.0F`.
-* `BlockFrameScaffold` uses `0.022222223F` and `0.125F`.
-* `ArtificeConfig` uses `-40` / `+5` for the lamp tint (`BlockLamp.getRenderColor`).
+* `BlockOre.INDEX_REDSTONE` / `INDEX_ENDER` - the two ore-table indices with a particle effect. The table order was
+  already pinned by `RegistrationInvariantsTest`; the test now names the constants too.
+* `TileFurnaceWrapper.MAX_HEAT` - 1600 **RF**, which at the default 8 RF per burn tick is 200 burn ticks, i.e. one
+  item, and the same budget a piece of coal carries. Worth saying out loud that the cap is in RF and not in ticks: a
+  pack that changes the exchange rate changes how much smelting the cap buys.
+* `TileEntityHeatingCoil.ENERGY_BUFFER` - the RF buffer, which shares the value with the heat cap by coincidence.
+* `ArtificeEventHandler.RESISTANCE_PER_LEVEL_PERCENT` - the 7 in `reslvl * 7 / 100.0F`.
+* `BlockLamp.TINT_DARKENED` / `TINT_INVERTED` - the two render-tint offsets, used by both the fixed and the
+  per-block colour paths.
+* `BlockFrameScaffold.CLIMB_EDGE` / `COLLISION_INSET` - naming these turned up a detail worth recording: the
+  collision box is inset by **0.135** from the block edge, not 0.125, because `Block`'s own bounds are already
+  inset by 0.01. The constant is additional to the bounds, which is not obvious from either number alone. The new
+  in-game assertion compares against `getBlockBoundsMinX()` for exactly that reason.
+
+Tests: the furnace wrapper's cap and its refusal to overfill (in-game, on a real furnace), and the scaffold's
+collision box against the block's own bounds.
 
 ---
 
@@ -1103,11 +1122,11 @@ artefacts and are safe to parameterise.
 | `HeatStorage` | Implements `IHeatProvider`/`IHeatReceiver` and has tests, but **no tile entity uses it** (both machines use CoFH `EnergyStorage`). | Keep if it is intended as an API; otherwise delete. Its tests are the only reason it is covered. |
 | `XSRandom` | Never instantiated. | Delete, or use it in worldgen for determinism. |
 | `MiscUtils.getAdjoinedTileEntities` | No callers (it is the buggy depth-1 flood fill from §5.5). | Delete, or fix and use it for multiblock coils. |
-| `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | Keep (it is on the recipe path) but add tests — `ComparableItemStackNBT.isStackEqual` casts without an `instanceof` and will `ClassCastException` on a mixed list. |
-| `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | Make the annotation reference the constants (annotation values must be compile-time constants, which they are) so there is one source of truth. |
+| `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | **done**: the unchecked cast and a null-item dereference both answer `false` now, and the in-game "box stack comparison" test covers the pair (it cannot be headless - the harness has no bootstrapped item registry). |
+| `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | **done**: the annotation and `@Instance` read the constants, `modChannel` is deleted, and `RegistrationInvariantsTest` pins the version against the annotation. The network channel keeps its literal on purpose - it is the wire protocol's name and must not follow a future id change. |
 | `CommandCalc` evaluator | See §5.35. | Delete the command or restore the dependency. |
-| `BlockRock.isReplaceableOreGen` | Never called by anything in this mod (it is an old Forge hook). | Verify against the 1.7.10 `Block` API; delete if unreferenced. |
-| `BlockOre.tickRate` | Returns 30 but `setTickRandomly` uses the random-tick rate, not `tickRate`. | Either use `scheduleBlockUpdate` or drop the override. |
+| `BlockRock.isReplaceableOreGen` | **Not dead code - this row was wrong.** `WorldGenMinable.generate` calls `isReplaceableOreGen` on the block it is about to replace, passing the block it intends to replace. | Keep, and it is now documented in place and pinned by the in-game drop test. Deleting it would have stopped other mods' ore generators from putting veins through basalt or marble. |
+| `BlockOre.tickRate` | Returns 30 but `setTickRandomly` uses the random-tick rate, not `tickRate`. | **done**: dropped. Verified first - nothing in 1.7.10 calls `Block.tickRate`; `World` and `WorldServer` never reference it. |
 | `FrameRenderer.getRenderId()` | Returns 0 (see §5.30). | Fix. |
 | `FormatCodes.RandomChar` / `Strike` / `Underlined` | Only `Italic`, `Aqua`, `Yellow`, `Reset`, `DarkGrey` are used. | Harmless; keep as a complete table. |
 | `ArtificeBlocks.blockDummy` | Registered nowhere (intentionally — it is a render proxy for `OreRenderer`). | Add a comment; the game test deliberately excludes it. |
@@ -1268,14 +1287,15 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, plus the
   metadata-table invariants and the `@Mod`/`@Instance` agreement.
-* **In-game (1,709 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+* **In-game (1,730 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
   box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
   two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
-  attuned link through real placement (including a transmitter that must not count as its own source), and the ore
-  layer generator over a real chunk.
+  attuned link through real placement (including a transmitter that must not count as its own source), the ore
+  layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
+  collision box.
 
 ### 10.2 Why the headless number is low, and what to do about it
 

@@ -47,8 +47,10 @@ public class ComparableItemStack {
     }
 
     public boolean isItemEqual(ComparableItemStack other) {
+        // this.item is null for a stack built from a null ItemStack (see isStackValid). Such a comparison used to
+        // NPE rather than say "not equal".
         return other != null && (this.oreID != -1 && this.oreID == other.oreID
-            || this.item.equals(other.getItem()) && this.metadata == other.metadata);
+            || this.item != null && this.item.equals(other.getItem()) && this.metadata == other.metadata);
     }
 
     public boolean isStackEqual(ComparableItemStack other) {

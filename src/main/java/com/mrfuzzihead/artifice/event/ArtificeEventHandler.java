@@ -15,6 +15,9 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
 public class ArtificeEventHandler {
 
+    /** Damage reduction per level of the resistance enchantment, as a percentage. */
+    private static final float RESISTANCE_PER_LEVEL_PERCENT = 7F;
+
     /**
      * A world that is unloaded never ticks again, so its tile entities never reach {@code invalidate()} - the
      * frequency index would keep them forever (CODE_REVIEW §6).
@@ -58,7 +61,7 @@ public class ArtificeEventHandler {
             }
 
             if (reslvl != 0) {
-                double maxResistance = reslvl * 7 / 100.0F;
+                double maxResistance = reslvl * RESISTANCE_PER_LEVEL_PERCENT / 100.0F;
                 double minResistance = maxResistance / 2.0;
                 double finalResistance = minResistance + event.entityLiving.getRNG()
                     .nextDouble() * (maxResistance - minResistance);
