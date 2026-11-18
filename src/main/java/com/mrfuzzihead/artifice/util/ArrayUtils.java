@@ -29,6 +29,23 @@ public final class ArrayUtils {
             return null;
         }
 
-        return index >= 0 && index < array.length ? array[index] : array[0];
+        return array[clampIndex(index, array.length)];
+    }
+
+    /**
+     * A subscript that is always safe for a table of {@code length}.
+     *
+     * <p>
+     * The icon tables are read with metadata that came from a save file, another mod's tool or a world edit, so the
+     * index is not the subtype count - and the renderer is the one place a stray value is fatal, because it runs while
+     * a chunk is being drawn. Clamping here means the subscript cannot be wrong even where the array access itself
+     * cannot be exercised: a dedicated server cannot load {@code IIcon} or {@code IIconRegister} at all, so the
+     * in-game harness can never call {@code getIcon}.
+     * </p>
+     *
+     * @return {@code index} when it is a valid subscript, otherwise {@code 0}
+     */
+    public static int clampIndex(int index, int length) {
+        return index >= 0 && index < length ? index : 0;
     }
 }

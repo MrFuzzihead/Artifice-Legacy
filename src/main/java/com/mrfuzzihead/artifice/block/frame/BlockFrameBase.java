@@ -9,6 +9,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -37,13 +38,15 @@ public class BlockFrameBase extends BlockFrame {
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(int side, int meta) {
-        return this.icons[meta];
+        // Metadata 4..15 is reachable: a world edit, a corrupt save or another mod's tool can write it, and the frame
+        // table only has one entry per tier. This was the one icon table in the mod that indexed unchecked.
+        return this.icons[ArrayUtils.clampIndex(meta, this.icons.length)];
     }
 
     @SideOnly(Side.CLIENT)
     @Override
     public IIcon getIcon(IBlockAccess block, int x, int y, int z, int side) {
-        return this.icons[block.getBlockMetadata(x, y, z)];
+        return this.icons[ArrayUtils.clampIndex(block.getBlockMetadata(x, y, z), this.icons.length)];
     }
 
     public int getRenderType() {

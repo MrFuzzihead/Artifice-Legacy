@@ -24,6 +24,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.net.ClientProxy;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.Names;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
@@ -414,7 +415,8 @@ public class BlockOre extends BlockArtifice {
         }
 
         public IIcon getIcon(int side, int meta) {
-            return ArtificeBlocks.rockBlocks[meta].getIcon(side, 0);
+            return ArtificeBlocks.rockBlocks[ArrayUtils.clampIndex(meta, ArtificeBlocks.rockBlocks.length)]
+                .getIcon(side, 0);
         }
 
         public IIcon getIcon(IBlockAccess block, int x, int y, int z, int side) {
@@ -424,7 +426,8 @@ public class BlockOre extends BlockArtifice {
 
         @SideOnly(Side.CLIENT)
         public int getRenderColor(int meta) {
-            return ArtificeBlocks.rockBlocks[meta].getRenderColor(meta);
+            return ArtificeBlocks.rockBlocks[ArrayUtils.clampIndex(meta, ArtificeBlocks.rockBlocks.length)]
+                .getRenderColor(meta);
         }
 
         @SideOnly(Side.CLIENT)

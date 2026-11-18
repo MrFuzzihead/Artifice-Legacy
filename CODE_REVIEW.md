@@ -560,6 +560,21 @@ is harmless and its `IBlockAccess` form just forwards. `ItemSteel` was also list
 Tests: `ArrayUtilsTest` (8 cases: in range, one past the end, negative, `Integer.MAX_VALUE`, null array, empty array,
 null fallback, and a loop over every index of a table).
 
+**Follow-up (round 8): the one table that was missed.** `BlockFrameBase` - the superclass of `BlockFrame` - indexed
+`this.icons[meta]` in **both** `getIcon` overloads with no check at all, and its table has one entry per tier. That is
+not hypothetical: the in-game suite places a frame at metadata 7 on purpose (to check the hardness clamp), so a frame
+carrying 4..15 from a save, a world edit or another mod's tool crashed the client renderer. It is the only unchecked
+icon table in the mod, and the harness cannot call it - a dedicated server cannot load `IIcon` or `IIconRegister` at
+all (see §10.3).
+
+The fix is a subscript helper rather than more copies of the clamp: `ArrayUtils.clampIndex(index, length)` returns the
+index when it is a valid subscript and `0` otherwise, `getOrFirst` is now expressed in terms of it, and every table
+that took its index straight from world metadata goes through it (`BlockFrameBase` both forms, `BlockOre`'s rock
+proxy - four sites, `BlockNuclearBattery`, `ItemBlockFlora`, `ItemResource`). The point is that the subscript is
+correct *by construction*, since the array access itself is the one thing no test in this repo can execute.
+`ArrayUtilsTest` pins `clampIndex` over -8..23 and at both `Integer` extremes, including the 4..15 range the frame
+table is exposed to.
+
 ### 5.13 `BlockRock` registers the paver texture as the antipaver texture — **P2 (visual)**
 
 `block/world/BlockRock.java:79-80`:
@@ -891,8 +906,12 @@ reason `BlockOre.getRenderBlockPass()` returns `1` for both passes. Prefer passi
 
 ### 5.32 `BlockEnderOre.getItemDropped` and friends ignore metadata — **P3**
 
-**Status: not changed.** The methods are harmless (they return the same thing the inherited ones would) and
-removing them cannot be verified by any test here; it is cosmetic cleanup for §7.
+**Status: not changed - and the row's reasoning was wrong.** `damageDropped` is load-bearing. Forge's
+`Block#getDrops` builds each drop as `new ItemStack(getItemDropped(meta), 1, damageDropped(meta))`, so without it
+ender ore drops `itemResource` metadata **0**, i.e. sulfur dust. Now asserted in game for both the normal and the
+glowing block through the real `getDrops` path, which is also what makes the row's "harmless, remove them" advice
+verifiable rather than argued. `getDamageValue` is left alone for the same reason: it is a live hook whose only
+effect is on corrupt metadata, and there is no gain in changing that.
 
 `block/world/BlockEnderOre.java` has no metadata subtypes, yet `getDamageValue`/`damageDropped`/`getDrops` are
 defined as if it did. Harmless, but it is copy-paste from `BlockSulfur`, and it hides the fact that the glowing
@@ -950,10 +969,13 @@ both track it) and delete the packet entirely.
 asks `player.isSneaking()`, which removes (a) and (b) from the only place that decides behaviour. The game test sets
 `player.setSneaking(true)` instead of adding an id to `Tracking.sneaks`.
 
-The packet, its handler, the client tick handler and `Tracking.sneaks` are now unused for behaviour but still
-registered. Deleting them is a network-identity change and is left as a follow-up rather than folded into a
-behaviour fix: the review's reasoning ("delete the packet entirely") is right, it just deserves its own commit and a
-client run to confirm nothing else subscribed.
+**Status: deleted (round 8).** The follow-up is done: `ArtificePacketSneak`, `ArtificePacket`,
+`ArtificeMessageToMessageCodec`, `SneakMessageHandler`, `PacketDispatcher`, `ArtificeClientTickHandler` and
+`Tracking.sneaks` are gone, along with the mod's only network channel - `CommonProxy.init` now registers just the GUI
+handler. Nothing else subscribed: the channel was created for this packet and no other class touched it, which is
+what a grep of `artificeChannel` showed before deleting. The one client-only tick handler was the only thing that
+could observe a key press, so removing it removes the (a) stale-id and (b) client/server disagreement problems
+outright rather than mitigating them.
 
 ---
 
@@ -1424,22 +1446,23 @@ update regenerates the wrong value and Artifice ores drop off the whitelist (z-f
 
 Verified end to end by dropping a real `angelica-modules.cfg` (CRLF) naming `BlockOre`, `BlockRock` and
 `shukaro.nodalmechanics` into `run/server/config` and running the in-game suite: two references moved, the other mod's
-package untouched, every other byte identical, `1763/1763` checks green.
+package untouched, every other byte identical, `1795/1795` checks green.
 
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (192 tests, 25 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (192 tests, 24 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
-  `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
+  `TileEntityLogic`, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
   registry-name builders, the scaffold support predicate against a transcription of the algorithm it replaced, the
   metadata-table invariants, the Chisel carving table (names, groups, metadata forms and order, asserted as literals
   rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip, CRLF and non-ASCII preservation,
-  idempotence, absent file), and the `@Mod`/`@Instance` agreement.
-* **In-game (1,763 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  idempotence, absent file), the icon-table subscript clamp (`clampIndex` over -8..23 and both `Integer` extremes),
+  and the `@Mod`/`@Instance` agreement.
+* **In-game (1,795 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1450,7 +1473,9 @@ package untouched, every other byte identical, `1763/1763` checks green.
   collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen
   registry-name set, the line order of the multi-line tooltips, the scaffold's tier-0 reach, and a fingerprint of what
   each of the four worldgen generators places for a fixed seed, and the join the Chisel integration always failed:
-  every carving-table name resolving to a registered block, and nothing but our rocks and rock slabs in it.
+  every carving-table name resolving to a registered block, and nothing but our rocks and rock slabs in it, the ender
+  ore drop through the real `getDrops` path, the attuned frequency index's cost, a seed sweep with a repeat run and a
+  vacuity check per generator, and the frequency index emptied by a real `WorldEvent.Unload`.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1471,22 +1496,51 @@ slab `getHalfSlab` map (§5.29) would each add pure testable surface.
 
 ### 10.3 What is still untested
 
-The list this section used to hold is complete: the `MiscUtils` six-direction iteration, the §7.2 frequency helper,
-the battery's NBT capacity, the scaffold tower and the `oreIron` drop are all asserted. What is genuinely uncovered
-now is a different set, and it is mostly the client and the paths that need a running game rather than a bootstrapped
-registry:
+Three of the four gaps this section used to list are now closed, and closing them changed what two of them meant.
+What remains is one gap, and it is now *evidenced* rather than assumed.
 
-1. **Client render paths.** `RenderBlocksInverted` (2,830 lines), `OreRenderer`, `FrameRenderer`, `TextureHandler` and
-   every `getIcon` overload. The harness runs a dedicated server (§10.2), so nothing that needs a GL context is
-   reachable. §5.12's off-by-one fix in six `getIcon` implementations is verified by reading, not by a test.
-2. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
-   but nothing asserts the property that motivated it: that a query costs O(frequency) and not O(loaded tiles).
-3. **Worldgen determinism** is covered now - `checkWorldGenFingerprints` records what each generator places for a
-   fixed seed - but only for one seed and one configuration per generator. A seed sweep is the next step if the
-   generators change again.
-4. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
-   through a real connection is not), and `WorldEvent.Unload` handling for the frequency index - tested with a mock
-   world, never with a real dimension unload.
+1. **Client render paths - unreachable, and now provably so.** `IIcon` and `IIconRegister` are
+   `@SideOnly(Side.CLIENT)`, and FML's `SideTransformer` refuses them on a dedicated server:
+
+   ```
+   java.lang.RuntimeException: Attempted to load class net/minecraft/client/renderer/texture/IIconRegister for
+       invalid side SERVER   at cpw.mods.fml.common.asm.transformers.SideTransformer.transform(SideTransformer.java:50)
+   ```
+
+   So `registerBlockIcons`, every `getIcon`, `RenderBlocksInverted` (2,830 lines), `OreRenderer`, `FrameRenderer`,
+   `TextureHandler` and the CTM code cannot be exercised here at all - not "not yet tested", but *not testable in this
+   harness*, and a client run is the only route. What could be done was done: every icon table now takes its
+   subscript from `ArrayUtils.clampIndex`, which is unit-tested, so the §5.12 bug class is impossible by construction
+   even where the access cannot be executed. That is also how the last unchecked table was found (`BlockFrameBase`,
+   §5.12 follow-up) - by reading, because nothing else was available.
+
+2. **`Tracking` under load - closed.** `Tracking.visitsOfLastQuery()` counts the tiles a query walks, and the in-game
+   `checkFrequencyIndexCost` places 18 attuned tiles across three interleaved frequencies and asserts a query walks
+   exactly its own six, that three queries walk each tile exactly once, and that an unused frequency walks nothing.
+   The assertion bites: making the query touch every frequency's set (the behaviour the index replaced) fails five
+   assertions, with the counts going from 6 to 24.
+
+3. **Worldgen determinism - closed, and the sweep found a vacuous test.** Each of the four generators now runs three
+   times: the pinned seed, a second seed, and the pinned seed again over a freshly prepared band. The second seed must
+   place something different (or the pinned hash is evidence of nothing) and the third run must reproduce the first
+   (or the generator is holding state between runs - the §5.33 risk). There is also a vacuity check: the pinned
+   fingerprint must differ from the fingerprint of the *untouched* band.
+
+   That check failed on the first run, for sulfur. The band seeded two 3x3 sulfur clusters, the generator looks for a
+   block adjacent to sulfur or lava at a random y, and it found a legal start so rarely that it placed **nothing**:
+   `d13198cb0d98c1cf`, the "sulfur deposit fingerprint", was the fingerprint of the filler. The band is now sulfur
+   stripes (lava made it vary between runs), the pinned seed is one that actually generates, and the fingerprint was
+   re-derived from a verified run. Ten seeds were probed: eight place something, all eight differ.
+
+4. **Multiplayer-only paths - closed, one by deletion and one by posting the real event.** The sneak protocol no longer
+   exists (§5.36), so there is no `S31Packet` round trip left to test. `WorldEvent.Unload` is now posted on the real
+   `MinecraftForge.EVENT_BUS` with the live `WorldServer` as the last group in the suite, and the index is checked
+   through the visit counter, because "frequency emptied" and "frequency holding one stale tile" both answer `0`.
+   Removing the `Tracking.forget(event.world)` call fails three assertions. The group runs last on purpose: other
+   mods' unload handlers are entitled to tear down their own state, and a throw from one of them is reported as a note
+   rather than as an Artifice failure.
+
+---
 
 ---
 
@@ -1638,7 +1692,7 @@ approximation. Re-run it before any release that touches names.
 | §5.31 render pass | `render/OreRenderer.java:82`; `BlockOre.java:369-377` |
 | §5.33 per-biome mutation | `world/WorldGenCluster.java:95-112`; `WorldGenCave.java:109-126` |
 | §5.35 calc | `command/CommandCalc.java:33-55` |
-| §5.36 sneak | `event/Tracking.java:14`; `event/ArtificeClientTickHandler.java`; `net/handlers/SneakMessageHandler.java` |
+| §5.36 sneak | deleted - `event/Tracking.java` (the `sneaks` field and the whole `net/` packet path) |
 | §6 tracking O(N·M) | `event/Tracking.java:16-38`; `tile/TileEntityAttuned.java:21-31` |
 | §7.1 blob duplication | `WorldGenCluster:133-246`, `WorldGenSulfur:112-197`, `WorldGenDesert:103-188`, `WorldGenCave:142-256` |
 | §7.2 frequency copies | 8 `WorldGen*` classes, `generateFeature` |

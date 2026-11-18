@@ -25,6 +25,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.MiscUtils;
 import com.mrfuzzihead.artifice.util.Names;
@@ -56,7 +57,7 @@ public class BlockNuclearBattery extends Block implements ITileEntityProvider {
 
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(int side, int meta) {
-        return meta < this.icons.length ? this.icons[meta] : this.icons[0];
+        return this.icons[ArrayUtils.clampIndex(meta, this.icons.length)];
     }
 
     public void getSubBlocks(Item item, CreativeTabs tabs, List list) {

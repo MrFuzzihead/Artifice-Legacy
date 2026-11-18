@@ -78,4 +78,40 @@ public class ArrayUtilsTest {
             Assert.assertEquals(ICONS[0], ArrayUtils.getOrFirst(ICONS, index));
         }
     }
+
+    @Test
+    public void clampIndexIsAlwaysASafeSubscript() {
+        for (int index = -8; index < 24; index++) {
+            int clamped = ArrayUtils.clampIndex(index, ICONS.length);
+
+            Assert.assertTrue(
+                "clampIndex(" + index + ") is a subscript for a " + ICONS.length + "-entry table",
+                clamped >= 0 && clamped < ICONS.length);
+            Assert.assertEquals(
+                "clampIndex(" + index + ") is the index itself when it is in range",
+                index >= 0 && index < ICONS.length ? index : 0,
+                clamped);
+        }
+    }
+
+    @Test
+    public void clampIndexHandlesAnEmptyTableAndTheExtremes() {
+        // An empty table has no subscript at all; callers check length first, and 0 is still the least surprising
+        // answer if one does not.
+        Assert.assertEquals(0, ArrayUtils.clampIndex(0, 0));
+        Assert.assertEquals(0, ArrayUtils.clampIndex(5, 0));
+        Assert.assertEquals(0, ArrayUtils.clampIndex(Integer.MIN_VALUE, 4));
+        Assert.assertEquals(0, ArrayUtils.clampIndex(Integer.MAX_VALUE, 4));
+        Assert.assertEquals(3, ArrayUtils.clampIndex(3, 4));
+    }
+
+    @Test
+    public void theFrameTableClampsLikeEveryOtherIconTable() {
+        // BlockFrameBase indexed icons[meta] unchecked, and metadata 4..15 is reachable - the in-game suite places a
+        // frame at metadata 7 to check the hardness clamp, which is exactly the value that would have thrown here.
+        int tiers = 4;
+        for (int meta = tiers; meta <= 15; meta++) {
+            Assert.assertEquals(0, ArrayUtils.clampIndex(meta, tiers));
+        }
+    }
 }

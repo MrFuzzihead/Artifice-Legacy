@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -40,7 +41,7 @@ public class ItemResource extends ItemArtifice {
 
     @Override
     public IIcon getIconFromDamage(int meta) {
-        return meta >= this.names.length ? this.icons[0] : this.icons[meta];
+        return this.icons[ArrayUtils.clampIndex(meta, this.names.length)];
     }
 
     @Override
