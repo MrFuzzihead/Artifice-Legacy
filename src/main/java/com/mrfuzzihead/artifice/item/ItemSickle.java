@@ -19,6 +19,7 @@ import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.BlockCoord;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -33,9 +34,7 @@ public class ItemSickle extends ItemTool {
         super(3.0F, mat, null);
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setMaxDamage(mat.getMaxUses() / 2);
-        this.setUnlocalizedName(
-            "artifice.sickle." + this.toolMaterial.toString()
-                .toLowerCase(Locale.ENGLISH));
+        this.setUnlocalizedName(Names.tool("sickle", this.toolMaterial));
         this.radius = this.getRadius(mat);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }

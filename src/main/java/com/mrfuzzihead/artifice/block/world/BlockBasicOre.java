@@ -12,6 +12,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -24,7 +25,7 @@ public class BlockBasicOre extends Block {
         super(Material.rock);
         this.setCreativeTab(ArtificeCore.worldTab);
         this.name = name;
-        this.setBlockName("artifice." + name);
+        this.setBlockName(Names.rock(name));
         this.setHarvestLevel("pickaxe", harvestLevel);
         this.setHardness(3.0F);
         this.setResistance(5.0F);

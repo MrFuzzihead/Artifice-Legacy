@@ -12,6 +12,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -42,7 +43,7 @@ public class BlockFrameDetector extends BlockFrame {
     private IIcon icon;
 
     public BlockFrameDetector() {
-        this.setBlockName("artifice.detector");
+        this.setBlockName(Names.DETECTOR);
 
         for (int i = 1; i <= 3; i++) {
             this.validTiers.remove(ArtificeConfig.tiers[i]);

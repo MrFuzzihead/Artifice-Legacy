@@ -20,6 +20,7 @@ import com.mrfuzzihead.artifice.item.ItemSickle;
 import com.mrfuzzihead.artifice.item.ItemSledge;
 import com.mrfuzzihead.artifice.item.ItemSteel;
 import com.mrfuzzihead.artifice.item.ItemUpgrade;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cofh.core.util.fluid.BucketHandler;
 
@@ -93,7 +94,7 @@ public class ArtificeItems {
         OreDictionary.registerOre("coinGold", new ItemStack(itemCoin, 1, 2));
         OreDictionary.registerOre("coinPlatinum", new ItemStack(itemCoin, 1, 3));
         itemUpgrade = new ItemUpgrade();
-        itemBucket = (ItemBucket) new ItemBucket("artifice").setUnlocalizedName("bucket")
+        itemBucket = (ItemBucket) new ItemBucket(Names.FLUID_NAMESPACE).setUnlocalizedName(Names.BUCKET)
             .setCreativeTab(ArtificeCore.mainTab);
         bucketOil = itemBucket.addItem(0, "bucketOil");
         bucketFuel = itemBucket.addItem(1, "bucketFuel");

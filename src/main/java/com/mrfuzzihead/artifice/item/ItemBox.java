@@ -23,6 +23,7 @@ import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -33,7 +34,7 @@ public class ItemBox extends ItemArtifice {
     private IIcon icon;
 
     public ItemBox() {
-        this.setUnlocalizedName("artifice.box");
+        this.setUnlocalizedName(Names.BOX);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

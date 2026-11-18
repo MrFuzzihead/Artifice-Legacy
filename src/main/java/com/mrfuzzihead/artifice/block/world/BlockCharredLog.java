@@ -13,6 +13,7 @@ import net.minecraft.world.IBlockAccess;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -24,7 +25,7 @@ public class BlockCharredLog extends BlockLog {
     private IIcon core;
 
     public BlockCharredLog() {
-        this.setBlockName("artifice.charredlog");
+        this.setBlockName(Names.CHARRED_LOG);
         this.setCreativeTab(ArtificeCore.worldTab);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }

@@ -8,6 +8,7 @@ import net.minecraft.util.IIcon;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,7 +23,7 @@ public class BlockSteel extends Block {
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setHardness(3.0F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice.steel");
+        this.setBlockName(Names.STEEL_BLOCK);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }
 

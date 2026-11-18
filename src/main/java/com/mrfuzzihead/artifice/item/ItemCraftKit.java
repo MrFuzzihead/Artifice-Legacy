@@ -8,6 +8,7 @@ import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cofh.lib.util.helpers.MathHelper;
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -19,7 +20,7 @@ public class ItemCraftKit extends ItemArtifice {
     public ItemCraftKit() {
         this.setHasSubtypes(false);
         this.setMaxStackSize(1);
-        this.setUnlocalizedName("artifice.craftkit");
+        this.setUnlocalizedName(Names.CRAFT_KIT);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

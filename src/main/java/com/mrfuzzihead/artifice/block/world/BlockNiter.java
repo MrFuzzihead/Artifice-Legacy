@@ -20,6 +20,7 @@ import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -31,7 +32,7 @@ public class BlockNiter extends BlockFalling {
     public BlockNiter() {
         super(Material.sand);
         this.setStepSound(Block.soundTypeSand);
-        this.setBlockName("artifice.niter");
+        this.setBlockName(Names.NITER);
         this.setCreativeTab(ArtificeCore.worldTab);
         this.setHardness(0.5F);
         GameRegistry.registerBlock(this, ItemBlockNiter.class, this.getUnlocalizedName());

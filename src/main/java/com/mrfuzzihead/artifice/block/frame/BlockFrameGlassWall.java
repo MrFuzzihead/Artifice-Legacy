@@ -9,6 +9,7 @@ import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,10 +23,10 @@ public class BlockFrameGlassWall extends BlockFrame {
     public BlockFrameGlassWall(boolean isDark) {
         this.isDark = isDark;
         if (isDark) {
-            this.setBlockName("artifice.glasswalldark");
+            this.setBlockName(Names.GLASS_WALL_DARK);
             this.setLightOpacity(15);
         } else {
-            this.setBlockName("artifice.glasswall");
+            this.setBlockName(Names.GLASS_WALL);
         }
 
         GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());

@@ -1,7 +1,6 @@
 package com.mrfuzzihead.artifice.block.world;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 
 import net.minecraft.block.Block;
@@ -26,6 +25,7 @@ import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.net.ClientProxy;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.Names;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
 
 import cofh.lib.util.helpers.ItemHelper;
@@ -58,9 +58,9 @@ public class BlockOre extends BlockArtifice {
         this.setHardness(3.0F);
         this.setResistance(5.0F);
         if (glowing) {
-            this.setBlockName("artifice." + name.toLowerCase(Locale.ENGLISH) + ".glowing");
+            this.setBlockName(Names.ore(name, true));
         } else {
-            this.setBlockName("artifice." + name.toLowerCase(Locale.ENGLISH));
+            this.setBlockName(Names.ore(name, false));
         }
 
         this.setCreativeTab(ArtificeCore.worldTab);

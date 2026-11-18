@@ -30,6 +30,7 @@ import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -61,9 +62,7 @@ public class ItemSledge extends ItemTool {
             this.setMaxDamage(mat.getMaxUses() / 16);
         }
 
-        this.setUnlocalizedName(
-            "artifice.sledge." + this.toolMaterial.toString()
-                .toLowerCase(Locale.ENGLISH));
+        this.setUnlocalizedName(Names.tool("sledge", this.toolMaterial));
         this.lossChance = this.getLossChance(mat);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }

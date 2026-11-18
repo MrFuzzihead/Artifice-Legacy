@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,7 +23,7 @@ public class ItemCoin extends ItemArtifice {
     private String[] coinTypes = new String[] { "Copper", "Silver", "Gold", "Platinum" };
 
     public ItemCoin() {
-        this.setUnlocalizedName("artifice.coin");
+        this.setUnlocalizedName(Names.COIN);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

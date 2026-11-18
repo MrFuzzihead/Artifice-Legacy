@@ -24,6 +24,7 @@ import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.MiscUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -41,7 +42,7 @@ public class BlockLogicRedstone extends Block implements ITileEntityProvider {
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setHardness(5.0F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice.logicredstone");
+        this.setBlockName(Names.LOGIC);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }
 

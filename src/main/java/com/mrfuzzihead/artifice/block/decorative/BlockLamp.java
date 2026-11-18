@@ -1,7 +1,6 @@
 package com.mrfuzzihead.artifice.block.decorative;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 
 import net.minecraft.block.Block;
@@ -21,6 +20,7 @@ import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.MinecraftColors;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -40,15 +40,7 @@ public class BlockLamp extends BlockArtifice {
         this.inverted = inverted;
         this.setHardness(0.3F);
         this.setStepSound(soundTypeGlass);
-        if (inverted) {
-            this.setBlockName(
-                "artifice.lampinverted." + color.name()
-                    .toLowerCase(Locale.ENGLISH));
-        } else {
-            this.setBlockName(
-                "artifice.lamp." + color.name()
-                    .toLowerCase(Locale.ENGLISH));
-        }
+        this.setBlockName(Names.lamp(color.name(), inverted));
 
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }

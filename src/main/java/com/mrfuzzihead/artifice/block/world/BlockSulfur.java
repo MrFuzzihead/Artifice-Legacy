@@ -16,6 +16,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -29,7 +30,7 @@ public class BlockSulfur extends BlockArtifice {
         this.setHardness(3.0F);
         this.setResistance(5.0F);
         this.setCreativeTab(ArtificeCore.worldTab);
-        this.setBlockName("artifice.sulfur");
+        this.setBlockName(Names.SULFUR);
         this.setHarvestLevel("pickaxe", 0, 0);
         GameRegistry.registerBlock(this, ItemBlockSulfur.class, this.getUnlocalizedName());
     }

@@ -23,6 +23,7 @@ import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.MiscUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -39,7 +40,7 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setHardness(5.0F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice.attunedredstone." + (transmitter ? "transmitter" : "receiver"));
+        this.setBlockName(transmitter ? Names.ATTUNED_TRANSMITTER : Names.ATTUNED_RECEIVER);
         this.transmitter = transmitter;
         GameRegistry.registerBlock(this, ItemBlockAttunedRedstone.class, this.getUnlocalizedName());
     }

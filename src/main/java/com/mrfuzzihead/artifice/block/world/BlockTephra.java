@@ -12,6 +12,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -23,7 +24,7 @@ public class BlockTephra extends BlockFalling {
     private IIcon blackGravel;
 
     public BlockTephra() {
-        this.setBlockName("artifice.tephra");
+        this.setBlockName(Names.TEPHRA);
         this.setCreativeTab(ArtificeCore.worldTab);
         this.setStepSound(Block.soundTypeGravel);
         this.setHardness(0.5F);

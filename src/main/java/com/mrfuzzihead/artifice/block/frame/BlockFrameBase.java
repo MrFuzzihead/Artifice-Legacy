@@ -9,6 +9,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -19,7 +20,7 @@ public class BlockFrameBase extends BlockFrame {
     private IIcon[] icons = new IIcon[ArtificeConfig.tiers.length];
 
     public BlockFrameBase() {
-        this.setBlockName("artifice.frame");
+        this.setBlockName(Names.FRAME);
         this.setBlockBounds(0.01F, 0.01F, 0.01F, 0.99F, 0.99F, 0.99F);
         GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());
     }

@@ -17,6 +17,7 @@ import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.BlockCoord;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -39,7 +40,7 @@ public class BlockFrameScaffold extends BlockFrame {
     private IIcon[] sideIcons = new IIcon[ArtificeConfig.tiers.length];
 
     public BlockFrameScaffold() {
-        this.setBlockName("artifice.scaffold");
+        this.setBlockName(Names.SCAFFOLD);
         this.setBlockBounds(0.01F, 0.01F, 0.01F, 0.99F, 0.99F, 0.99F);
         GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());
     }

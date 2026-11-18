@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,7 +23,7 @@ public class ItemNugget extends ItemArtifice {
     private String[] nuggetTypes = new String[] { "Copper", "Silver", "Platinum" };
 
     public ItemNugget() {
-        this.setUnlocalizedName("artifice.nugget");
+        this.setUnlocalizedName(Names.NUGGET);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

@@ -10,6 +10,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,7 +23,7 @@ public class ItemSteel extends ItemArtifice {
     private String[] names = new String[] { "ingot", "dust" };
 
     public ItemSteel() {
-        this.setUnlocalizedName("artifice.steel");
+        this.setUnlocalizedName(Names.STEEL_ITEM);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

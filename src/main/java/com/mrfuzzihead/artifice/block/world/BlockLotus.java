@@ -11,6 +11,7 @@ import net.minecraft.world.World;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -23,7 +24,7 @@ public class BlockLotus extends BlockLilyPad {
 
     public BlockLotus() {
         this.setCreativeTab(ArtificeCore.worldTab);
-        this.setBlockName("artifice.flora.lily");
+        this.setBlockName(Names.LOTUS);
         this.setStepSound(soundTypeGrass);
         GameRegistry.registerBlock(this, ItemBlockLotus.class, this.getUnlocalizedName());
     }
