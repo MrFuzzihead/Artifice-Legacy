@@ -27,26 +27,28 @@ import gnu.trove.map.hash.THashMap;
  */
 public class ArtificeTickHandler {
 
-    public static TMap<Integer, ArrayDeque<ISuspendableGen>> suspendedGenerators = new THashMap();
-    public static TMap<Integer, ArrayDeque<IDelayedGen>> delayedGenerators = new THashMap();
+    public static TMap<Integer, ArrayDeque<ISuspendableGen>> suspendedGenerators = new THashMap<>();
+    public static TMap<Integer, ArrayDeque<IDelayedGen>> delayedGenerators = new THashMap<>();
 
     public static void queueGeneration(int dimID, ISuspendableGen gen) {
         if (gen.getChunksToGen()
             .size() != 0) {
             if (!suspendedGenerators.containsKey(dimID)) {
-                suspendedGenerators.put(dimID, new ArrayDeque());
+                suspendedGenerators.put(dimID, new ArrayDeque<ISuspendableGen>());
             }
 
-            ((ArrayDeque) suspendedGenerators.get(dimID)).add(gen);
+            suspendedGenerators.get(dimID)
+                .add(gen);
         }
     }
 
     public static void queueGeneration(int dimID, IDelayedGen gen) {
         if (!delayedGenerators.containsKey(dimID)) {
-            delayedGenerators.put(dimID, new ArrayDeque());
+            delayedGenerators.put(dimID, new ArrayDeque<IDelayedGen>());
         }
 
-        ((ArrayDeque) delayedGenerators.get(dimID)).add(gen);
+        delayedGenerators.get(dimID)
+            .add(gen);
     }
 
     @SubscribeEvent

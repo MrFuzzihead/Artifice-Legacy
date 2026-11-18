@@ -14,7 +14,7 @@ import gnu.trove.map.hash.THashMap;
 
 public class TextureHandler {
 
-    private static TMap<NameMetaPair, ConnectedTexture[]> connectedTextures = new THashMap();
+    private static TMap<NameMetaPair, ConnectedTexture[]> connectedTextures = new THashMap<>();
 
     public static IIcon registerIcon(IIconRegister reg, String name, String folder) {
         return reg.registerIcon("Artifice".toLowerCase(Locale.ENGLISH) + ":" + folder + "/" + name);

@@ -114,7 +114,7 @@ public class WorldGenSulfur implements IFeatureGenerator {
             this.world = world;
             this.rand = rand;
             this.coord = start;
-            this.toGen = new THashMap();
+            this.toGen = new THashMap<>();
             this.size = size;
         }
 
@@ -127,7 +127,7 @@ public class WorldGenSulfur implements IFeatureGenerator {
         public boolean doGeneration(int chunkX, int chunkZ) {
             ChunkCoord chunk = new ChunkCoord(chunkX, chunkZ);
             if (!this.toGen.containsKey(chunk)) {
-                this.toGen.put(chunk, new ArrayList());
+                this.toGen.put(chunk, new ArrayList<BlockCoord>());
             }
             int genned = 0;
             int threshold = this.size / 8;
@@ -136,7 +136,7 @@ public class WorldGenSulfur implements IFeatureGenerator {
                 for (BlockCoord t : this.coord.getAdjacent()) {
                     ChunkCoord c = new ChunkCoord(t);
                     if (!this.toGen.containsKey(c)) {
-                        this.toGen.put(c, new ArrayList());
+                        this.toGen.put(c, new ArrayList<BlockCoord>());
                     }
 
                     if (!chunk.contains(t) && !this.world.blockExists(t.x, t.y, t.z)) {
@@ -144,24 +144,30 @@ public class WorldGenSulfur implements IFeatureGenerator {
                         return PendingChunks.hasWork(this.toGen);
                     }
 
-                    if (WorldGenSulfur.this.canGenHere(this.world, t)
-                        && !((ArrayList) this.toGen.get(chunk)).contains(t)) {
+                    if (WorldGenSulfur.this.canGenHere(this.world, t) && !this.toGen.get(chunk)
+                        .contains(t)) {
                         if (this.toGen.get(chunk) == null) {
-                            this.toGen.put(chunk, new ArrayList());
+                            this.toGen.put(chunk, new ArrayList<BlockCoord>());
                         }
 
-                        ((ArrayList) this.toGen.get(chunk)).add(t);
+                        this.toGen.get(chunk)
+                            .add(t);
                     }
                 }
 
-                if (((ArrayList) this.toGen.get(chunk)).size() == 0) {
+                if (this.toGen.get(chunk)
+                    .size() == 0) {
                     break;
                 }
 
                 this.coord.set(
-                    (BlockCoord) ((ArrayList) this.toGen.get(chunk))
-                        .get(this.rand.nextInt(((ArrayList) this.toGen.get(chunk)).size())));
-                ((ArrayList) this.toGen.get(chunk)).remove(this.coord);
+                    this.toGen.get(chunk)
+                        .get(
+                            this.rand.nextInt(
+                                this.toGen.get(chunk)
+                                    .size())));
+                this.toGen.get(chunk)
+                    .remove(this.coord);
                 this.world.setBlock(
                     this.coord.x,
                     this.coord.y,
@@ -171,12 +177,18 @@ public class WorldGenSulfur implements IFeatureGenerator {
                     0);
                 genned++;
 
-                while (((ArrayList) this.toGen.get(chunk)).size() > threshold && genned < this.size
-                    && ((ArrayList) this.toGen.get(chunk)).size() != 0) {
+                while (this.toGen.get(chunk)
+                    .size() > threshold && genned < this.size
+                    && this.toGen.get(chunk)
+                        .size() != 0) {
                     this.coord.set(
-                        (BlockCoord) ((ArrayList) this.toGen.get(chunk))
-                            .get(this.rand.nextInt(((ArrayList) this.toGen.get(chunk)).size())));
-                    ((ArrayList) this.toGen.get(chunk)).remove(this.coord);
+                        this.toGen.get(chunk)
+                            .get(
+                                this.rand.nextInt(
+                                    this.toGen.get(chunk)
+                                        .size())));
+                    this.toGen.get(chunk)
+                        .remove(this.coord);
                     this.world.setBlock(
                         this.coord.x,
                         this.coord.y,

@@ -292,8 +292,12 @@ public class ItemSledge extends ItemTool {
                     items[i] = (ItemStack) objects[i];
                 }
 
-                if (objects[i] instanceof ArrayList && ((ArrayList) objects[i]).size() > 0) {
-                    items[i] = (ItemStack) ((ArrayList) objects[i]).get(0);
+                // An ore-dictionary ingredient arrives as a list of candidates; the first one stands for the slot.
+                if (objects[i] instanceof List && !((List<?>) objects[i]).isEmpty()) {
+                    Object first = ((List<?>) objects[i]).get(0);
+                    if (first instanceof ItemStack) {
+                        items[i] = (ItemStack) first;
+                    }
                 }
             }
 

@@ -254,7 +254,7 @@ public class ArtificeBlocks {
     }
 
     public static void initOreMappings() {
-        oreMappings = new THashMap();
+        oreMappings = new THashMap<>();
 
         for (int j = 0; j < oreNames.length; j++) {
             oreMappings.put(oreNames[j], blockOres[j]);
