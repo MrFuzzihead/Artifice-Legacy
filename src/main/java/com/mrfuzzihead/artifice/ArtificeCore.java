@@ -89,6 +89,10 @@ public class ArtificeCore {
         ArtificeConfig.initCommon(evt);
         ArtificeFluids.initFluids();
         ArtificeBlocks.initBlocks();
+        // Before anything can query the ore dictionary, and before ArtificeRecipes#registerOreRecipes runs in init:
+        // registering the variants only in postInit meant every one of those smelting recipes matched "Unknown" and
+        // was never added at all (CODE_REVIEW 9.2 / row 14 of the TL;DR).
+        ArtificeBlocks.registerOreVariants();
         ArtificeTiles.initTiles();
         ArtificeItems.initItems();
         ArtificeEnchants.initEnchants();
@@ -115,7 +119,6 @@ public class ArtificeCore {
     public void postInit(FMLPostInitializationEvent evt) {
         ArtificeBlocks.initOreMappings();
         ArtificeBlocks.initOreSet();
-        ArtificeBlocks.registerOreVariants();
         ArtificeBlocks.registerBasaltsAndMarbles();
         if (ArtificeConfig.floraBoneMeal) {
             for (BiomeGenBase biome : BiomeGenBase.getBiomeGenArray()) {

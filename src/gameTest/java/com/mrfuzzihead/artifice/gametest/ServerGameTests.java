@@ -28,6 +28,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.EnumUpgrades;
@@ -35,6 +36,7 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.util.OreDictFallback;
 
 /**
  * The in-game assertions. Each {@code check*} method reports every failure through {@link #check} so the exit code
@@ -81,6 +83,7 @@ public final class ServerGameTests {
         run("heating coil", ServerGameTests::checkHeatingCoil);
         run("nuclear battery", ServerGameTests::checkNuclearBattery);
         run("block drops", ServerGameTests::checkBlockDrops);
+        run("ore dictionary dependence", ServerGameTests::checkOreDictionaryDependence);
         run("sledge dispenser", ServerGameTests::checkSledgeDispenser);
         run("recipes", ServerGameTests::checkRecipes);
         run("tooltips", ServerGameTests::checkTooltips);
@@ -879,6 +882,110 @@ public final class ServerGameTests {
             ArtificeItems.itemResource,
             ArtificeBlocks.blockEnderOre.getItemDropped(0, world.rand, 0));
         checkEquals("ender ore drops ender dust metadata", 2, ArtificeBlocks.blockEnderOre.damageDropped(0));
+    }
+
+    /**
+     * CODE_REVIEW 5.9 and 9.2.
+     *
+     * <p>
+     * 5.9: ore drops are looked up in the ore dictionary, so a pack that does not register one of these names (or
+     * registers it after Artifice) used to NPE on break, on silk touch and in {@code createStackedBlock}. The
+     * dictionary list handed out by {@code OreDictionary.getOres} is immutable, so the fallbacks are driven
+     * directly with a null entry, which is exactly the state the old code dereferenced.
+     * </p>
+     *
+     * <p>
+     * 9.2: the smelting recipes were registered in {@code init} while the dictionary entries they match on only
+     * appeared in {@code postInit}, so none of them ever registered.
+     * </p>
+     */
+    private static void checkOreDictionaryDependence() {
+        // 5.9: the null-entry path of every ore that goes through the dictionary.
+        for (int i = 0; i < ArtificeBlocks.oreNames.length; i++) {
+            BlockOre ore = ArtificeBlocks.blockOres[i];
+            if (ore == null) {
+                continue;
+            }
+
+            String oreName = ArtificeBlocks.oreNames[i];
+            Item ownItem = Item.getItemFromBlock(ore);
+            check(
+                oreName + " falls back to its own item without a dictionary entry",
+                OreDictFallback.item(null, ore) == ownItem);
+            checkEquals(oreName + " falls back to metadata 0", 0, OreDictFallback.meta(null));
+
+            ItemStack stacked = OreDictFallback.blockStack(null, ore);
+            check(oreName + " has a silk-touch stack without a dictionary entry", stacked != null);
+            checkEquals(
+                oreName + " silk-touch stack is the block itself",
+                Item.getItemFromBlock(ore),
+                stacked.getItem());
+        }
+
+        // ... and the normal path still uses the dictionary entry when it exists.
+        ItemStack copperEntry = OreDictionary.getOres("oreCopper")
+            .isEmpty() ? null
+                : OreDictionary.getOres("oreCopper")
+                    .get(0);
+        check("the test pack registers oreCopper", copperEntry != null);
+        if (copperEntry != null) {
+            check(
+                "a real dictionary entry is preferred over the fallback",
+                OreDictFallback.item(copperEntry, ArtificeBlocks.blockOres[oreIndexOf("oreCopper")])
+                    == copperEntry.getItem());
+            checkEquals(
+                "the dictionary entry's metadata comes through",
+                copperEntry.getItemDamage(),
+                OreDictFallback.meta(copperEntry));
+
+            // The wiring, not just the helper: BlockOre#getItemDropped must go through the entry.
+            check(
+                "BlockOre's own drop path uses the dictionary entry",
+                ArtificeBlocks.blockOres[oreIndexOf("oreCopper")].getItemDropped(0, new java.util.Random(2L), 0)
+                    == copperEntry.getItem());
+        }
+
+        // 9.2: every vanilla-mapped ore must smelt from every rock variant.
+        int checkedOres = 0;
+        for (int i = 0; i < ArtificeBlocks.blockOres.length; i++) {
+            String oreName = ArtificeBlocks.oreNames[i];
+            ItemStack expected = null;
+            for (Object object : net.minecraft.item.crafting.FurnaceRecipes.smelting()
+                .getSmeltingList()
+                .entrySet()) {
+                java.util.Map.Entry<?, ?> entry = (java.util.Map.Entry<?, ?>) object;
+                ItemStack input = (ItemStack) entry.getKey();
+                if (input != null && input.getItem() == Item.getItemFromBlock(ArtificeBlocks.blockOres[i])) {
+                    expected = (ItemStack) entry.getValue();
+                    break;
+                }
+            }
+
+            if (expected == null) {
+                continue;
+            }
+
+            checkedOres++;
+            for (int j = 0; j < ArtificeBlocks.rockBlocks.length; j++) {
+                ItemStack result = net.minecraft.item.crafting.FurnaceRecipes.smelting()
+                    .getSmeltingResult(new ItemStack(ArtificeBlocks.blockOres[i], 1, j));
+                check(
+                    "smelts " + oreName + " variant " + j,
+                    result != null && result.getItem() == expected.getItem()
+                        && result.getItemDamage() == expected.getItemDamage());
+            }
+        }
+        check("the ore smelting recipes registered at all (" + checkedOres + " ores)", checkedOres >= 7);
+    }
+
+    private static int oreIndexOf(String oreName) {
+        for (int i = 0; i < ArtificeBlocks.oreNames.length; i++) {
+            if (ArtificeBlocks.oreNames[i].equals(oreName)) {
+                return i;
+            }
+        }
+
+        return 0;
     }
 
     private static void checkRecipes() {
