@@ -175,25 +175,34 @@ public class ItemSledge extends ItemTool {
     }
 
     private static ArrayList<ItemStack> getIngredientsForItemStack(ItemStack input, Random rand) {
-        if (input != null) {
-            for (IRecipe recipe : CraftingManager.getInstance()
-                .getRecipeList()) {
-                if ((recipe instanceof ShapedRecipes || recipe instanceof ShapedOreRecipe)
-                    && recipe.getRecipeOutput() != null
-                    && recipe.getRecipeOutput()
-                        .getUnlocalizedName()
-                        .equals(input.getUnlocalizedName())
-                    && (!recipe.getRecipeOutput()
-                        .getHasSubtypes()
-                        || recipe.getRecipeOutput()
-                            .getItemDamage() == input.getItemDamage())) {
-                    if (recipe.getRecipeOutput().stackSize > 1) {
-                        return null;
-                    }
+        if (input == null) {
+            return null;
+        }
 
-                    return getIngredientsForRecipe(recipe);
-                }
+        for (IRecipe recipe : CraftingManager.getInstance()
+            .getRecipeList()) {
+            if (!(recipe instanceof ShapedRecipes) && !(recipe instanceof ShapedOreRecipe)) {
+                continue;
             }
+
+            ItemStack output = recipe.getRecipeOutput();
+            if (output == null) {
+                continue;
+            }
+
+            // Match the stack, not the unlocalised name: block items share one name per block
+            // (tile.stone covers every variant) and two mods can collide, so a name match can pick another item's
+            // recipe - and it always picked the first one in the list, i.e. load order decided the output
+            // (CODE_REVIEW 5.15).
+            if (!output.isItemEqual(input)) {
+                continue;
+            }
+
+            if (output.stackSize > 1) {
+                return null;
+            }
+
+            return getIngredientsForRecipe(recipe);
         }
 
         return null;

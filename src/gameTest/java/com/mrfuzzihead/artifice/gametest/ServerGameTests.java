@@ -98,6 +98,7 @@ public final class ServerGameTests {
         run("sledge dispenser", ServerGameTests::checkSledgeDispenser);
         run("recipes", ServerGameTests::checkRecipes);
         run("box recipes", ServerGameTests::checkBoxRecipes);
+        run("sledge ingredients", ServerGameTests::checkSledgeIngredients);
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
         run("enchantments", ServerGameTests::checkEnchantments);
@@ -1194,6 +1195,54 @@ public final class ServerGameTests {
         }
 
         return count;
+    }
+
+    /**
+     * CODE_REVIEW 5.15. The sledge found "the recipe for this drop" by comparing unlocalised names, which block
+     * items share across variants and which two mods can collide on. It now compares the stack.
+     *
+     * <p>
+     * The collision itself needs a mod-provided recipe to demonstrate, so this guards the path that must keep
+     * working: a vanilla shaped recipe must still resolve to exactly its ingredients.
+     * </p>
+     */
+    private static void checkSledgeIngredients() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        try {
+            site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
+            site.setBlock(site.x, site.y, site.z, Blocks.crafting_table, 0);
+
+            ItemStack sledge = new ItemStack(ArtificeItems.itemSledgeIron);
+            List<ItemStack> ingredients = com.mrfuzzihead.artifice.item.ItemSledge
+                .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+
+            check("the sledge finds ingredients for a crafting table", ingredients != null);
+            if (ingredients == null) {
+                return;
+            }
+
+            checkEquals("a crafting table unsmelts into four items", 4, ingredients.size());
+            for (ItemStack ingredient : ingredients) {
+                check(
+                    "the crafting table's ingredient is planks",
+                    ingredient != null && ingredient.getItem() == Item.getItemFromBlock(Blocks.planks));
+            }
+
+            // A block with no shaped recipe keeps its normal drops.
+            site.setBlock(site.x, site.y, site.z, Blocks.stone, 0);
+            List<ItemStack> stone = com.mrfuzzihead.artifice.item.ItemSledge
+                .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+            check("stone still yields its own drop", stone != null && !stone.isEmpty());
+            check(
+                "stone's drop is not a recipe result",
+                stone != null && stone.size() == 1
+                    && stone.get(0)
+                        .getItem() == Item.getItemFromBlock(Blocks.cobblestone));
+        } finally {
+            site.clear();
+        }
     }
 
     private static void checkRecipes() {

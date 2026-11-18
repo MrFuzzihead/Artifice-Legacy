@@ -593,6 +593,15 @@ variant. Worse, the method returns the **first** match in the recipe list, so lo
 Prefer `ItemStack.isItemEqual` + `OreDictionary`-aware comparison, and skip recipes whose output has subtypes
 unless the damage matches (the code already half-does this).
 
+**Status: fixed on `refactor/1.1.6`** — the loop now matches on `output.isItemEqual(input)` instead of the
+unlocalised name, skips recipes with a null output (which `RecipeBox` used to be, §5.18), and no longer relies on
+`getHasSubtypes` to fake a damage comparison.
+
+Honest about the testing: a name collision needs a mod-provided recipe to demonstrate, so the in-game test guards
+the path that has to keep working instead - a crafting table unsmelts into exactly four planks, and stone still
+yields its own cobblestone rather than some recipe's result. The stricter comparison is the fix; the test is the
+leash.
+
 ### 5.16 `BlockFlora.updateTick` never calls `super` — **P2**
 
 `block/world/BlockFlora.java:57-66` overrides `updateTick` and does the day/night swap but never calls
@@ -698,7 +707,11 @@ is the `charge` NBT stamped on the crafted item (§5.27). Worth deciding whether
 
 ### 5.22 `ArtificeRegistry` logs through a possibly-null logger — **P2**
 
-`ArtificeRegistry.java:28, 86, 161, 173, 184` call `ArtificeCore.logger.info(...)` unconditionally. `logger` is
+`ArtificeRegistry.java:28, 86, 161, 173, 184` call `ArtificeCore.logger.info(...)` unconditionally.
+
+**Status: fixed on `refactor/1.1.6`** — a private `logInfo` helper null-checks the logger once, and the five call
+sites go through it. Not tested: it needs another mod to call in before Artifice's `preInit`, which is a load-order
+scenario the harness cannot produce. The change is a one-line guard, read and reviewed rather than executed. `logger` is
 assigned in `ArtificeCore.preInit`, but `ArtificeRegistry` is a public entry point that other mods may call from
 *their* `preInit`, which may run before Artifice's. Also `ArtificeConfig.setStoneList` calls it during Artifice's
 own preInit (after the assignment, so that path is fine). Guard with a null check or assign the logger in a static
