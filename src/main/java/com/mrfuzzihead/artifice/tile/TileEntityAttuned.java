@@ -11,11 +11,46 @@ import com.mrfuzzihead.artifice.event.Tracking;
 
 public class TileEntityAttuned extends TileEntity {
 
-    public String frequency = "";
+    /**
+     * Private and set through {@link #setFrequency(String)}: the frequency index files this tile by it, so a direct
+     * assignment would leave the tile under its old key and silently stop coupling (CODE_REVIEW §6).
+     */
+    private String frequency = "";
     public int power = 0;
 
     public boolean canUpdate() {
         return true;
+    }
+
+    // Indexed by frequency for as long as the tile is loaded (CODE_REVIEW §6). validate() runs when the tile is added
+    // to a chunk and when its chunk loads; invalidate() runs on removal and on chunk unload.
+    public void validate() {
+        super.validate();
+        Tracking.track(this);
+    }
+
+    public void invalidate() {
+        Tracking.untrack(this);
+        super.invalidate();
+    }
+
+    public String getFrequency() {
+        return this.frequency;
+    }
+
+    /**
+     * Re-files the tile under its new frequency. Callers must not assign the field: the index would keep the tile
+     * under the old key, and a transmitter on that frequency would keep reading it.
+     */
+    public void setFrequency(String frequency) {
+        String next = frequency == null ? "" : frequency;
+        if (next.equals(this.frequency)) {
+            return;
+        }
+
+        String previous = this.frequency;
+        this.frequency = next;
+        Tracking.reindex(this, previous);
     }
 
     public void updateEntity() {
@@ -55,6 +90,8 @@ public class TileEntityAttuned extends TileEntity {
 
     public void readFromNBT(NBTTagCompound tag) {
         super.readFromNBT(tag);
+        // Not setFrequency(): this may run while the chunk is still loading, and the tile has not been indexed yet,
+        // so a reindex here would file it prematurely. validate() files it, once the tile is really in a chunk.
         this.frequency = tag.getString("frequency");
         this.power = tag.getInteger("power");
     }

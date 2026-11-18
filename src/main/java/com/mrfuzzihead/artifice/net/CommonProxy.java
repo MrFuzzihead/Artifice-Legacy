@@ -16,6 +16,8 @@ public class CommonProxy {
     public static EnumMap<Side, FMLEmbeddedChannel> artificeChannel;
 
     public void init() {
+        // Literal, not ArtificeCore.modID: this is the wire protocol's name and both sides must agree on it. Tying it
+        // to the mod id would silently break every client the moment the id changed.
         artificeChannel = NetworkRegistry.INSTANCE.newChannel(
             "Artifice",
             new ChannelHandler[] { new ArtificeMessageToMessageCodec(), new SneakMessageHandler() });

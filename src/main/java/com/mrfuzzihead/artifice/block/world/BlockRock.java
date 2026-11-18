@@ -133,6 +133,12 @@ public class BlockRock extends BlockArtifice {
         return ArtificeConfig.ctmRenderID;
     }
 
+    /**
+     * Not dead code, despite looking like it: {@code WorldGenMinable.generate} calls this on the block it is about to
+     * replace, passing the block it intends to replace. Answering true for stone is what lets other mods' ore
+     * generators put veins through our rock, and answering true for {@code this} lets one rock layer cut through
+     * another (CODE_REVIEW §8 lists this as unreferenced; it is referenced from vanilla worldgen).
+     */
     public boolean isReplaceableOreGen(World world, int x, int y, int z, Block target) {
         return target == this || target == Blocks.stone;
     }

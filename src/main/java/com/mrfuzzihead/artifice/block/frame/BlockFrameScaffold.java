@@ -26,6 +26,15 @@ public class BlockFrameScaffold extends BlockFrame {
 
     private static final ForgeDirection[] sides = new ForgeDirection[] { ForgeDirection.NORTH, ForgeDirection.SOUTH,
         ForgeDirection.EAST, ForgeDirection.WEST, ForgeDirection.DOWN };
+
+    /**
+     * How far inside the block the climbable face starts: a climber is only slowed when it is actually against the
+     * scaffold, not when it merely brushes the corner. The collision box is inset by an eighth of a block on x and z
+     * (on top of the block's own bounds, which are already inset by 0.01) so the scaffold does not swallow the
+     * player's feet.
+     */
+    private static final float CLIMB_EDGE = 0.022222223F;
+    private static final float COLLISION_INSET = 0.125F;
     private IIcon[] icons = new IIcon[ArtificeConfig.tiers.length];
     private IIcon[] sideIcons = new IIcon[ArtificeConfig.tiers.length];
 
@@ -92,7 +101,7 @@ public class BlockFrameScaffold extends BlockFrame {
     }
 
     public void onEntityCollidedWithBlock(World world, int x, int y, int z, Entity entity) {
-        float shrinkAmount = 0.022222223F;
+        float shrinkAmount = CLIMB_EDGE;
         if (!(entity.boundingBox.minY >= y + (1.0F - shrinkAmount)) && !(entity.boundingBox.maxY <= y + shrinkAmount)) {
             entity.fallDistance = 0.0F;
             if (entity.isCollidedHorizontally) {
@@ -109,7 +118,7 @@ public class BlockFrameScaffold extends BlockFrame {
     }
 
     public AxisAlignedBB getCollisionBoundingBoxFromPool(World world, int x, int y, int z) {
-        float shrinkAmount = 0.125F;
+        float shrinkAmount = COLLISION_INSET;
         return AxisAlignedBB.getBoundingBox(
             x + this.minX + shrinkAmount,
             y + this.minY,

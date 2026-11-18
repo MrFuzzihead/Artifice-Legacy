@@ -21,6 +21,7 @@ import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
@@ -36,7 +37,9 @@ import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
+import com.mrfuzzihead.artifice.block.world.BlockRock;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
+import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.BoxCraftingHandler;
@@ -47,9 +50,13 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.tile.TileFurnaceWrapper;
 import com.mrfuzzihead.artifice.util.BoxContents;
+import com.mrfuzzihead.artifice.util.ComparableItemStack;
+import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
+import com.mrfuzzihead.artifice.world.WorldGenLayer;
 
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 
@@ -93,10 +100,12 @@ public final class ServerGameTests {
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("lamp stability", ServerGameTests::checkLampStability);
         run("detector pulse", ServerGameTests::checkDetectorPulse);
+        run("ore layer generation", ServerGameTests::checkLayerGeneration);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
         run("box item identity", ServerGameTests::checkBoxItemIdentity);
+        run("box stack comparison", ServerGameTests::checkBoxStackComparison);
         run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
@@ -718,6 +727,22 @@ public final class ServerGameTests {
             site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
             site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockScaffold, 0);
 
+            // The collision box is inset so a climber does not sink into the scaffold; the climbable face starts just
+            // inside the block (the two constants CODE_REVIEW §7.7 asked to name).
+            AxisAlignedBB box = ArtificeBlocks.blockScaffold
+                .getCollisionBoundingBoxFromPool(world, site.x, site.y, site.z);
+            check("the scaffold has a collision box", box != null);
+            if (box != null) {
+                Block scaffold = ArtificeBlocks.blockScaffold;
+                double inset = 0.125;
+                double dx = (box.minX - site.x) - (scaffold.getBlockBoundsMinX() + inset);
+                double dz = (box.minZ - site.z) - (scaffold.getBlockBoundsMinZ() + inset);
+                double dh = (box.maxY - box.minY) - (scaffold.getBlockBoundsMaxY() - scaffold.getBlockBoundsMinY());
+
+                check("the collision box is inset by an eighth of a block", Math.abs(dx) < 1e-6 && Math.abs(dz) < 1e-6);
+                check("the collision box keeps the block's height", Math.abs(dh) < 1e-6);
+            }
+
             checkEquals(
                 "scaffold on a solid floor stays",
                 ArtificeBlocks.blockScaffold,
@@ -908,6 +933,60 @@ public final class ServerGameTests {
         checkEquals("a name-carrying box yields its item", before + 2, countItem(player, Items.diamond));
     }
 
+    /**
+     * The value types behind {@code RecipeBox.matches}: two stacks are "the same item" if they share an
+     * ore-dictionary id or the same item and damage, and the NBT variant adds the tag to that.
+     *
+     * <p>
+     * Headless tests cannot cover this - the harness has no bootstrapped item registry, so there is no
+     * {@code Items.diamond} to compare. The comparisons matter because they are used as recipe matches: a wrong
+     * {@code true} crafts the wrong thing, a {@code false} refuses a legal recipe.
+     * </p>
+     */
+    private static void checkBoxStackComparison() {
+        ItemStack diamond = new ItemStack(Items.diamond);
+        ItemStack tagged = new ItemStack(Items.diamond);
+        NBTTagCompound tag = new NBTTagCompound();
+        tag.setInteger("artifice:test", 7);
+        tagged.setTagCompound(tag);
+
+        ComparableItemStack plain = new ComparableItemStack(diamond);
+        ComparableItemStack samePlain = new ComparableItemStack(new ItemStack(Items.diamond));
+        ComparableItemStackNBT withTag = new ComparableItemStackNBT(tagged);
+
+        check("the same item and damage compare equal", plain.isItemEqual(samePlain));
+        check(
+            "stack equality includes the count",
+            !plain.isStackEqual(new ComparableItemStack(new ItemStack(Items.diamond, 2))));
+        check(
+            "a different damage is a different item",
+            !plain.isItemEqual(new ComparableItemStack(new ItemStack(Items.dye, 3))));
+
+        // The NBT half, including the case that used to be a ClassCastException: a tagged key against a plain stack.
+        check("the item half of a tagged stack still matches", withTag.isItemEqual(plain));
+        check("the tag half does not", !withTag.isStackEqual(plain));
+        check("an NBT stack against a plain one is false, not a crash", !withTag.isStackEqual(plain));
+        check("an NBT stack against null is false", !withTag.isStackEqual(null));
+
+        ItemStack sameTag = new ItemStack(Items.diamond);
+        sameTag.setTagCompound((NBTTagCompound) tag.copy());
+        check("equal tags match", withTag.isStackEqual(new ComparableItemStackNBT(sameTag)));
+
+        // A stack built from null is invalid rather than a landmine.
+        ComparableItemStack invalid = new ComparableItemStack((ItemStack) null);
+        check("a stack built from null is invalid", !invalid.isStackValid());
+        check(
+            "a stack built from null compares false rather than throwing",
+            !invalid.isItemEqual(plain) && !plain.isItemEqual(invalid));
+
+        ItemStack restored = withTag.toItemStack();
+        check(
+            "the tag survives the round trip",
+            restored != null && restored.getTagCompound() != null
+                && restored.getTagCompound()
+                    .getInteger("artifice:test") == 7);
+    }
+
     private static void checkSickleAreaOfEffect() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1069,6 +1148,65 @@ public final class ServerGameTests {
         }
     }
 
+    /**
+     * §6: the layer generator now reads each block once and skips air before building its lookup pair. The refactor
+     * collapsed two branches that had to stay equivalent - a registered stone type is replaced, anything else is
+     * left alone, and an ore is converted rather than overwritten.
+     *
+     * <p>
+     * Run on a chunk far from every other test site, because the generator is hardcoded to work in 16x16 columns and
+     * will rewrite whatever it finds there.
+     * </p>
+     */
+    private static void checkLayerGeneration() {
+        World world = overworld();
+        int chunkX = 4000;
+        int chunkZ = 4000;
+        int x0 = chunkX * 16;
+        int z0 = chunkZ * 16;
+
+        Set<NameMetaPair> stoneTypes = ArtificeRegistry.getStoneTypes();
+        check("there is at least one registered stone type to replace", !stoneTypes.isEmpty());
+        if (stoneTypes.isEmpty()) {
+            return;
+        }
+
+        NameMetaPair stone = stoneTypes.iterator()
+            .next();
+        check("the registered stone type resolves to a block", stone.getBlock() != null);
+        if (stone.getBlock() == null) {
+            return;
+        }
+
+        // 40..60: the generator jitters both ends by up to 3, so everything in 43..56 is inside every column's band.
+        int y = 50;
+        WorldGenLayer layer = new WorldGenLayer(ArtificeBlocks.rockBlocks[0], 0, 40, 60);
+
+        for (int dx = 0; dx < 3; dx++) {
+            for (int dz = 0; dz < 3; dz++) {
+                world.setBlock(x0 + dx, y, z0 + dz, stone.getBlock(), stone.getMetadata(), 0);
+            }
+        }
+        // Not a stone type: must survive untouched.
+        world.setBlock(x0 + 9, y, z0, Blocks.dirt, 0, 3);
+
+        layer.generateFeature(world.rand, chunkX, chunkZ, world, true);
+
+        int replaced = 0;
+        for (int dx = 0; dx < 3; dx++) {
+            for (int dz = 0; dz < 3; dz++) {
+                if (world.getBlock(x0 + dx, y, z0 + dz) == ArtificeBlocks.rockBlocks[0]) {
+                    replaced++;
+                }
+            }
+        }
+        checkEquals("the layer replaces every registered stone block in the band", 9, replaced);
+        checkEquals(
+            "the layer leaves blocks that are not stone types alone",
+            Blocks.dirt,
+            world.getBlock(x0 + 9, y, z0));
+    }
+
     private static void checkAttunedRedstone() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1091,8 +1229,8 @@ public final class ServerGameTests {
             TileEntityAttuned receiver = (TileEntityAttuned) receiverTile;
             TileEntityAttuned transmitter = (TileEntityAttuned) transmitterTile;
 
-            receiver.frequency = frequency;
-            transmitter.frequency = frequency;
+            receiver.setFrequency(frequency);
+            transmitter.setFrequency(frequency);
 
             // Drive the receiver directly: the block-power read is covered by the unit-level getPower() contract,
             // and going through the real redstone rules here would make the test depend on vanilla power semantics.
@@ -1111,9 +1249,40 @@ public final class ServerGameTests {
                 ArtificeBlocks.blockAttunedRedstoneReceiver.isProvidingWeakPower(world, site.x, site.y, site.z, 0));
 
             // Different frequencies must not couple.
-            transmitter.frequency = "artifice-gametest-other";
+            transmitter.setFrequency("artifice-gametest-other");
             transmitter.updateEntity();
             checkEquals("a different frequency does not couple", 0, transmitter.power);
+
+            transmitter.setFrequency(frequency);
+            transmitter.updateEntity();
+            checkEquals("re-pairing restores the link", 12, transmitter.power);
+
+            // Only receivers answer. A transmitter carries the same power field, so on a shared frequency it would
+            // out-vote the receiver it is relaying if the block type were not checked (CODE_REVIEW §6).
+            //
+            // Queried through Tracking rather than the transmitter, because the transmitter emitting its power
+            // notifies its neighbours, and that notification re-derives the receiver's power from a world that has no
+            // redstone attached - which would overwrite the value under test.
+            site.setBlock(site.x + 2, site.y + 1, site.z, ArtificeBlocks.blockAttunedRedstoneTransmitter, 0);
+            TileEntity second = world.getTileEntity(site.x + 2, site.y + 1, site.z);
+            check("a second transmitter has a tile entity", second instanceof TileEntityAttuned);
+            if (second instanceof TileEntityAttuned) {
+                TileEntityAttuned peer = (TileEntityAttuned) second;
+                peer.setFrequency(frequency);
+                peer.power = 15;
+                receiver.power = 12;
+
+                checkEquals(
+                    "a transmitter is not a power source for its own frequency",
+                    12,
+                    Tracking.getHighestFrequencyPower(frequency));
+
+                // Breaking it takes it out of the index, so the next query does not have to skip a dead tile.
+                world.setBlockToAir(site.x + 2, site.y + 1, site.z);
+                check("breaking a tile removes it from the index", peer.isInvalid());
+                receiver.power = 12;
+                checkEquals("the link survives a peer being broken", 12, Tracking.getHighestFrequencyPower(frequency));
+            }
         } finally {
             site.clear();
         }
@@ -1165,6 +1334,23 @@ public final class ServerGameTests {
                 }
             }
             check("coil heat reached at least one furnace", burnTime > 0);
+
+            // The per-furnace cap, through the wrapper the coil actually talks to. A furnace that is already full
+            // must refuse heat rather than lose it, and one item's worth is what MAX_HEAT buys at the default rate.
+            TileEntityFurnace capped = (TileEntityFurnace) world.getTileEntity(
+                site.x + ForgeDirection.UP.offsetX,
+                site.y + ForgeDirection.UP.offsetY,
+                site.z + ForgeDirection.UP.offsetZ);
+            if (capped != null) {
+                TileFurnaceWrapper wrapper = new TileFurnaceWrapper(capped);
+                checkEquals("the wrapper reports the constant cap", TileFurnaceWrapper.MAX_HEAT, wrapper.getMaxHeat());
+                check("a furnace can take heat", wrapper.receiveHeat(TileFurnaceWrapper.MAX_HEAT) > 0);
+                checkEquals("a full furnace takes no more heat", 0, wrapper.receiveHeat(100));
+                checkEquals(
+                    "the cap is in RF, so the heat reads back as MAX_HEAT",
+                    TileFurnaceWrapper.MAX_HEAT,
+                    wrapper.getHeat());
+            }
             check("coil drains RF while heating", coil.getEnergyStored(ForgeDirection.UP) < 1600);
 
             // CODE_REVIEW 5.4: the neighbour helpers indexed the side array twice, so a random subset of the six
@@ -1285,6 +1471,19 @@ public final class ServerGameTests {
             ArtificeItems.itemResource,
             ArtificeBlocks.blockEnderOre.getItemDropped(0, world.rand, 0));
         checkEquals("ender ore drops ender dust metadata", 2, ArtificeBlocks.blockEnderOre.damageDropped(0));
+
+        // CODE_REVIEW §8 lists BlockRock.isReplaceableOreGen as unreferenced; it is a live vanilla hook -
+        // WorldGenMinable.generate asks the block it is about to replace - so this pins the contract instead.
+        BlockRock rock = (BlockRock) ArtificeBlocks.rockBlocks[0];
+        check(
+            "rock is replaceable ore-gen for stone, so other mods' veins cut through it",
+            rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.stone));
+        check(
+            "rock is replaceable ore-gen for rock, so one layer can cut through another",
+            rock.isReplaceableOreGen(world, 0, 0, 0, rock));
+        check(
+            "rock is not replaceable ore-gen for a third block",
+            !rock.isReplaceableOreGen(world, 0, 0, 0, Blocks.dirt));
     }
 
     /**
@@ -1533,6 +1732,17 @@ public final class ServerGameTests {
                     ingredient != null && ingredient.getItem() == Item.getItemFromBlock(Blocks.planks));
             }
 
+            // A recipe that makes more than one item is not a recipe for a single drop: breaking one torch must not
+            // yield a torch's worth of sticks and coal.
+            site.setBlock(site.x, site.y, site.z, Blocks.torch, 0);
+            List<ItemStack> torch = com.mrfuzzihead.artifice.item.ItemSledge
+                .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+            check(
+                "a multi-output recipe is not used",
+                torch != null && torch.size() == 1
+                    && torch.get(0)
+                        .getItem() == Item.getItemFromBlock(Blocks.torch));
+
             // A block with no shaped recipe keeps its normal drops.
             site.setBlock(site.x, site.y, site.z, Blocks.stone, 0);
             List<ItemStack> stone = com.mrfuzzihead.artifice.item.ItemSledge
@@ -1543,6 +1753,20 @@ public final class ServerGameTests {
                 stone != null && stone.size() == 1
                     && stone.get(0)
                         .getItem() == Item.getItemFromBlock(Blocks.cobblestone));
+
+            // The recipe index is built once and reused; a stale or partial index would give a different answer the
+            // second time round, which is the whole risk of caching a registry.
+            site.setBlock(site.x, site.y, site.z, Blocks.crafting_table, 0);
+            for (int repeat = 0; repeat < 3; repeat++) {
+                List<ItemStack> again = com.mrfuzzihead.artifice.item.ItemSledge
+                    .getIngredientsForBlock(world, site.x, site.y, site.z, sledge);
+                check(
+                    "the recipe index answers consistently",
+                    again != null && again.size() == 4
+                        && again.get(0) != null
+                        && again.get(0)
+                            .getItem() == Item.getItemFromBlock(Blocks.planks));
+            }
         } finally {
             site.clear();
         }

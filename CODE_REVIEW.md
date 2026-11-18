@@ -32,8 +32,14 @@
 | 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
 | 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
 | 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
-| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | P3 |
-| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | P3 |
+| 19 | `ItemSledge` scans the whole crafting table on every block break | perf | ~~P3~~ done |
+| 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
+| 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
+| 22 | `MiscUtils`' neighbour helpers allocated a boxed array and took a lock per call (§6.2) | perf | ~~P3~~ done |
+| 23 | `ComparableItemStackNBT.isStackEqual` casts without a check, and `isItemEqual` dereferences a null item (§8) | bug | ~~P2~~ done |
+| 24 | Mod id, name and version each existed twice, plus an unused `modChannel` (§8) | cleanup | ~~P3~~ done |
+| 25 | Raw `ArrayList`/`ArrayDeque` casts throughout worldgen and the tick handler (§7.6) | cleanup | ~~P3~~ done |
+| 26 | Six unnamed literals on hot or hard-to-read paths (§7.7) | cleanup | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -932,17 +938,51 @@ client run to confirm nothing else subscribed.
 
 ## 6. Performance
 
-| Location | Issue | Fix |
-|---|---|---|
-| `event/Tracking.java:16-38` | `getHighestFrequencyPower` scans **every loaded tile entity of every world** for every attuned block, every tick (`TileEntityAttuned.updateEntity`). With N attuned blocks and M tile entities this is O(N·M) per tick. | Maintain a `Map<String, Set<TileEntityAttuned>>` (or a per-frequency max-power cache invalidated on change) in `Tracking`. |
-| `event/ArtificeTickHandler.java:50-70` | Unbounded growth (see 5.6) plus an O(deque) scan every 5 ticks that never shrinks. | Track completion; remove on empty. |
-| `item/ItemSledge.java:179-186` | Every block break scans the entire `CraftingManager` recipe list (thousands of entries in a GTNH pack) and compares unlocalised names. | Pre-index `Map<Item, List<IRecipe>>` on `FMLPostInitializationEvent`, or cache per `(item, meta)`. |
-| `block/frame/BlockFrameScaffold.java:205-225` | `isRooted` walks from `y-1` to 0 (up to 256 `getBlock` calls) on every neighbour change; `checkStay` then calls `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower is O(height · r³ · n²). | Walk the support chain once with a visited set; cap the radius search; replace the `LinkedList` flood fill with an `ArrayDeque` + `HashSet`. |
-| `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. |
-| `world/WorldGenLayer.java:36-90` | Scans the full 16×16×height band and does two `NameMetaPair` hash lookups per block. At the default basalt layer (0–10) that is ~2.8k blocks/chunk; if a user configures a tall layer it is 65k. | Skip blocks that are air first, and use a single `getBlock`+`getBlockMetadata` pair (already done) but early-out on `isAirBlock` before building the pair. |
-| `util/MiscUtils.java:63-98` | Called per coil/battery per tick; builds and shuffles a 6-element `Integer[]` each call (two allocations + boxing). | Use a static `int[]` rotated by a random start index instead of shuffle+boxing. |
-| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. |
-| `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path; leave alone, but see §7. |
+Status key: **done** = fixed on `refactor/1.1.6` / `perf/hot-paths`; **open** = still there; **left** = deliberately
+not changed.
+
+| Location | Issue | Fix | Status |
+|---|---|---|---|
+| `event/Tracking.java` | `getHighestFrequencyPower` scanned **every loaded tile entity of every world** for every attuned block, every tick (`TileEntityAttuned.updateEntity`). With N attuned blocks and M tile entities this was O(N·M) per tick. `BlockAttunedRedstone.onNeighborBlockChange` paid the same price on every redstone update. | Maintain a `Map<String, Set<TileEntityAttuned>>` in `Tracking`. | **done** |
+| `event/ArtificeTickHandler.java:50-70` | Unbounded growth (see 5.6) plus an O(deque) scan every 5 ticks that never shrinks. | Track completion; remove on empty. | **done** (5.6) |
+| `item/ItemSledge.java` | Every block break scanned the entire `CraftingManager` recipe list (thousands of entries in a GTNH pack). | Index shaped recipes by output item. | **done** |
+| `world/WorldGenLayer.java` | Built the same `NameMetaPair` twice per block (four world reads, two registry lookups on a hit) and did it for air too. | Read the block once, skip air. | **done** |
+| `util/MiscUtils.java:63-98` | Called per coil/battery per tick; built and shuffled a 6-element `Integer[]` each call (two allocations, six boxes) through `Math.random()`, which is one shared `Random` behind a lock. | Static `int[]` rotated by a random start. | **done, differently - see below** |
+| `block/frame/BlockFrameScaffold.java:205-225` | `isRooted` walks from `y-1` to 0 (up to 256 `getBlock` calls) on every neighbour change; `checkStay` then calls `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower is O(height · r³ · n²). | Walk the support chain once with a visited set; cap the radius search; replace the `LinkedList` flood fill with an `ArrayDeque` + `HashSet`. | open |
+| `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. | left (client-side) |
+| `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. | left |
+| `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path, but see §7. | left (client-side) |
+
+### 6.1 Tracking: an index of tiles, not a cache of power
+
+The attuned transmitter asks its question once per tick, and the answer used to be a walk of
+`world.loadedTileEntityList` for every world. The tile entities now file themselves under their frequency as they
+`validate()` and `invalidate()`, so a query sees only the blocks that share its frequency. Two details decided the
+shape:
+
+* **It indexes tile entities, not values.** Receiver power is a `getBlockPowerInput` read, i.e. a redstone input that
+  can change at any moment. A cached maximum would go stale on the next lever pull; the query still reads each
+  tile's live `power` field, exactly as the scan did, and still checks that the block there is really the receiver.
+* **`frequency` had to become private.** A direct field write leaves the tile filed under its old key and silently
+  stops coupling. The gametest did exactly that, and had to be converted to `setFrequency()`; external code that
+  asserts on the field will now fail to compile rather than misbehave at runtime.
+
+Entries leave by three mechanisms: `invalidate()`, a `WorldEvent.Unload` hook (a world that is unloaded never ticks
+again, so its tiles never reach `invalidate()`), and a sweep of invalid entries during a query. Only the third is
+load-bearing for correctness; the others keep the lists small.
+
+### 6.2 MiscUtils: why not the static rotation
+
+The review suggested a static `int[]` rotated by a random start, which would have removed the last allocation. It
+is not a fair order for the question being asked. Both callers hand something valuable to the first side they find -
+the heating coil's entire tick of heat, the battery's entire tick of energy - so "which side wins" has to be
+uniform. With candidates on two sides, a rotation from a uniform start visits one of them first in **4,037 of 6,000
+draws** instead of 3,000: a coil between two furnaces would have fed one of them two thirds of the time and let the
+other starve.
+
+What shipped is a primitive `int[]` and a Fisher-Yates shuffle against a private `Random`: no boxing, no lock, one
+six-element array, against six `world.getTileEntity` calls. `getHeatReceiverNeighborIsFairBetweenTwoAdjacentReceivers`
+pins the property and fails on the rotation.
 
 ---
 
@@ -1038,21 +1078,37 @@ registration order (and therefore the block/item name coupling) very hard to rea
 roughly 60% and make it impossible to forget a subtype. Note `ItemSledge`/`ItemSickle` look up tooltips with
 `getItemDamage() == 0` while `ItemBlockArtifice` uses the real damage — a helper would standardise this.
 
-### 7.6 Unchecked collections
+### 7.6 Unchecked collections - **done**
 
-`ArtificeTickHandler` (`TMap<Integer, ArrayDeque<ISuspendableGen>>` used with raw casts), `WorldGenSulfur/Desert`
-(`new ArrayList()` raw), `compat/Forestry` (`List<ItemStack>` unchecked cast from reflection), `MiscUtils`
-(`Integer[]` shuffles), `ArtificeRegistry` (`ArrayList<Object>` input lists). Most of these are decompiler
+`ArtificeTickHandler` and the four suspendable generators (`WorldGenCluster`, `WorldGenSulfur`, `WorldGenDesert`,
+`WorldGenCave`) held `TMap<ChunkCoord, ArrayList<BlockCoord>>` and then cast the value out of it:
+`((ArrayList) this.toGen.get(chunk)).add(t)`. The cast asserted what the declaration already said, and would have
+turned a declaration change into a `ClassCastException` at worldgen time. `ItemSledge`'s ore-dictionary ingredient
+list was checked as `instanceof ArrayList`; it is a `List` of candidates where the first stands for the slot.
+
+All of them are parameterised now, with no behaviour change. What is left of §7.6 is `ArtificeRegistry`'s
+`ArrayList<Object>` input lists, which come from `ShapelessOreRecipe.getInput()` - a raw `ArrayList` in 1.7.10, so
+there is nothing to parameterise at the source. Most of these are decompiler
 artefacts and are safe to parameterise.
 
-### 7.7 Magic numbers that deserve names
+### 7.7 Magic numbers that deserve names - **done**
 
-* `BlockOre.sparkle` hardcodes ore indices 5 (redstone) and 13 (ender). `RegistrationInvariantsTest` now pins the
-  table order, but the code should reference named constants.
-* `TileFurnaceWrapper.getMaxHeat()` returns `1600` (a literal).
-* `ArtificeEventHandler` uses `reslvl * 7 / 100.0F`.
-* `BlockFrameScaffold` uses `0.022222223F` and `0.125F`.
-* `ArtificeConfig` uses `-40` / `+5` for the lamp tint (`BlockLamp.getRenderColor`).
+* `BlockOre.INDEX_REDSTONE` / `INDEX_ENDER` - the two ore-table indices with a particle effect. The table order was
+  already pinned by `RegistrationInvariantsTest`; the test now names the constants too.
+* `TileFurnaceWrapper.MAX_HEAT` - 1600 **RF**, which at the default 8 RF per burn tick is 200 burn ticks, i.e. one
+  item, and the same budget a piece of coal carries. Worth saying out loud that the cap is in RF and not in ticks: a
+  pack that changes the exchange rate changes how much smelting the cap buys.
+* `TileEntityHeatingCoil.ENERGY_BUFFER` - the RF buffer, which shares the value with the heat cap by coincidence.
+* `ArtificeEventHandler.RESISTANCE_PER_LEVEL_PERCENT` - the 7 in `reslvl * 7 / 100.0F`.
+* `BlockLamp.TINT_DARKENED` / `TINT_INVERTED` - the two render-tint offsets, used by both the fixed and the
+  per-block colour paths.
+* `BlockFrameScaffold.CLIMB_EDGE` / `COLLISION_INSET` - naming these turned up a detail worth recording: the
+  collision box is inset by **0.135** from the block edge, not 0.125, because `Block`'s own bounds are already
+  inset by 0.01. The constant is additional to the bounds, which is not obvious from either number alone. The new
+  in-game assertion compares against `getBlockBoundsMinX()` for exactly that reason.
+
+Tests: the furnace wrapper's cap and its refusal to overfill (in-game, on a real furnace), and the scaffold's
+collision box against the block's own bounds.
 
 ---
 
@@ -1066,11 +1122,11 @@ artefacts and are safe to parameterise.
 | `HeatStorage` | Implements `IHeatProvider`/`IHeatReceiver` and has tests, but **no tile entity uses it** (both machines use CoFH `EnergyStorage`). | Keep if it is intended as an API; otherwise delete. Its tests are the only reason it is covered. |
 | `XSRandom` | Never instantiated. | Delete, or use it in worldgen for determinism. |
 | `MiscUtils.getAdjoinedTileEntities` | No callers (it is the buggy depth-1 flood fill from §5.5). | Delete, or fix and use it for multiblock coils. |
-| `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | Keep (it is on the recipe path) but add tests — `ComparableItemStackNBT.isStackEqual` casts without an `instanceof` and will `ClassCastException` on a mixed list. |
-| `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | Make the annotation reference the constants (annotation values must be compile-time constants, which they are) so there is one source of truth. |
+| `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | **done**: the unchecked cast and a null-item dereference both answer `false` now, and the in-game "box stack comparison" test covers the pair (it cannot be headless - the harness has no bootstrapped item registry). |
+| `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | **done**: the annotation and `@Instance` read the constants, `modChannel` is deleted, and `RegistrationInvariantsTest` pins the version against the annotation. The network channel keeps its literal on purpose - it is the wire protocol's name and must not follow a future id change. |
 | `CommandCalc` evaluator | See §5.35. | Delete the command or restore the dependency. |
-| `BlockRock.isReplaceableOreGen` | Never called by anything in this mod (it is an old Forge hook). | Verify against the 1.7.10 `Block` API; delete if unreferenced. |
-| `BlockOre.tickRate` | Returns 30 but `setTickRandomly` uses the random-tick rate, not `tickRate`. | Either use `scheduleBlockUpdate` or drop the override. |
+| `BlockRock.isReplaceableOreGen` | **Not dead code - this row was wrong.** `WorldGenMinable.generate` calls `isReplaceableOreGen` on the block it is about to replace, passing the block it intends to replace. | Keep, and it is now documented in place and pinned by the in-game drop test. Deleting it would have stopped other mods' ore generators from putting veins through basalt or marble. |
+| `BlockOre.tickRate` | Returns 30 but `setTickRandomly` uses the random-tick rate, not `tickRate`. | **done**: dropped. Verified first - nothing in 1.7.10 calls `Block.tickRate`; `World` and `WorldServer` never reference it. |
 | `FrameRenderer.getRenderId()` | Returns 0 (see §5.30). | Fix. |
 | `FormatCodes.RandomChar` / `Strike` / `Underlined` | Only `Italic`, `Aqua`, `Yellow`, `Reset`, `DarkGrey` are used. | Harmless; keep as a complete table. |
 | `ArtificeBlocks.blockDummy` | Registered nowhere (intentionally — it is a render proxy for `OreRenderer`). | Add a comment; the game test deliberately excludes it. |
@@ -1229,14 +1285,17 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
-  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, plus the metadata-table invariants and
-  the `@Mod`/`@Instance` agreement.
-* **In-game (1,696 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, plus the
+  metadata-table invariants and the `@Mod`/`@Instance` agreement.
+* **In-game (1,730 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
   box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
-  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour).
+  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
+  attuned link through real placement (including a transmitter that must not count as its own source), the ore
+  layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
+  collision box.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
