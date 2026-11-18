@@ -35,6 +35,8 @@ import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
+import com.mrfuzzihead.artifice.block.frame.BlockFrame;
+import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.block.world.BlockRock;
@@ -486,6 +488,31 @@ public final class ServerGameTests {
             check(
                 "glass wall resistance scales with tier",
                 ArtificeBlocks.blockGlassWall.getResistance(3) > ArtificeBlocks.blockGlassWall.getResistance(0));
+
+            // CODE_REVIEW §9.3 / §9.4: hardness is a table by tier, and a blast wall adds five to it. The table
+            // replaced `meta + 5`, which turned corrupt metadata 7 into hardness 12.
+            site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
+            for (int meta = 0; meta < ArtificeConfig.tiers.length; meta++) {
+                site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockFrame, meta);
+                checkEquals(
+                    "frame hardness for tier " + meta,
+                    5.0F + meta,
+                    ArtificeBlocks.blockFrame.getBlockHardness(world, site.x, site.y, site.z));
+
+                site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockReinforced, meta);
+                checkEquals(
+                    "blast wall hardness for tier " + meta,
+                    5.0F + meta + BlockFrameBlastWall.BLAST_BONUS,
+                    ArtificeBlocks.blockReinforced.getBlockHardness(world, site.x, site.y, site.z));
+            }
+
+            site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockFrame, 7);
+            checkEquals("frame metadata 7 is placed", 7, world.getBlockMetadata(site.x, site.y, site.z));
+            checkEquals(
+                "corrupt frame metadata gets the first tier's hardness, not a number of its own",
+                5.0F,
+                ArtificeBlocks.blockFrame.getBlockHardness(world, site.x, site.y, site.z));
+            checkEquals("the table is asked for metadata 7 directly too", 5.0F, BlockFrame.hardnessFor(7));
         } finally {
             site.clear();
         }

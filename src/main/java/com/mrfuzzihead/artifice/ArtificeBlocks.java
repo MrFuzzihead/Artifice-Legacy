@@ -104,6 +104,10 @@ public class ArtificeBlocks {
     public static Block[] rockBlocks = new Block[9];
     public static String[] rockBlockNames = new String[] { "basalt", "marble", "limestone.gray", "limestone.lightgray",
         "limestone.brown", "limestone.tan", "limestone.reddish", "limestone.bluish", "limestone.greenish" };
+    /**
+     * Never registered and never placed: it exists so {@code OreRenderer} has a block to ask for the ore icons, and
+     * the game test deliberately excludes it from the registry assertions (CODE_REVIEW §8).
+     */
     public static Block blockDummy;
     public static TMap<String, Block> oreMappings;
     public static Set<NameMetaPair> oreSet;
