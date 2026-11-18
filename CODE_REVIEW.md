@@ -40,6 +40,9 @@
 | 24 | Mod id, name and version each existed twice, plus an unused `modChannel` (§8) | cleanup | ~~P3~~ done |
 | 25 | Raw `ArrayList`/`ArrayDeque` casts throughout worldgen and the tick handler (§7.6) | cleanup | ~~P3~~ done |
 | 26 | Six unnamed literals on hot or hard-to-read paths (§7.7) | cleanup | ~~P3~~ done |
+| 27 | Frame hardness was `meta + 5`, so corrupt metadata invented a hardness; the blast wall's extra 5 was unexplained (§9.3, §9.4) | cleanup | ~~P3~~ done |
+| 28 | Registry names were frozen by §4 but only in prose; nothing failed if one changed | infra | ~~P2~~ done |
+| 29 | `initBlocks` was one 144-line method (§7.4) | refactor | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -1077,11 +1080,18 @@ Introduce a `Names` class with `public static final String BASALT = "basalt";` �
 `setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
 for the first time.
 
-### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method — **open**
+### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method - **done**
 
-Split into `initRocks`, `initOres`, `initFrames`, `initDecorative`, `initFluids`, `initFunctional`, each with a
-static field group. The current method constructs ~120 blocks and registers ~40 of them in one go, which makes the
-registration order (and therefore the block/item name coupling) very hard to reason about.
+Split into `initFlora`, `initRocks`, `initOres`, `initFluids`, `initDecorative`, `registerRockBlocks`, `initFrames`,
+`initFunctional` - the groups it always had, called in the order it always ran them. The method constructed ~120
+blocks and registered ~40 of them in one go, with slab registration and four ore-dictionary batches interleaved
+between the construction lines.
+
+**Status: done.** Pure extraction: the concatenated statement sequence is byte-identical to the original 125
+statements, verified mechanically rather than by eye, so no block id moved - which matters, because block ids are
+assigned in registration order and a world's id table only stays valid if that order does. `initBlocks` says so out
+loud now, and two groups carry the reason they sit where they do: `initFluids` defers to a fluid another mod may have
+registered, and `registerRockBlocks` has to run after the rocks and before the frames.
 
 ### 7.5 The tooltip registry is 226 registration calls — **open**
 
@@ -1186,7 +1196,9 @@ recipe from a different code path, which is why the miss was easy to overlook.
 `BlockRock.getIcon` clamps at 6), so a block placed with corrupt metadata 7 has hardness 12. Harmless, but a
 hardness table indexed by tier would be clearer.
 
-**Status: open (cosmetic).** Nothing pins hardness at all (§10.3), so a table should arrive with its own assertions.
+**Status: done.** Hardness is a four-entry table in tier order, clamped to the first tier for metadata that is not a
+tier - the same treatment §5.12 gave icons - so corrupt metadata 7 now behaves like Basic (5.0) instead of inventing
+12. Asserted in-game for every tier, and for metadata 7 both through the world and directly.
 
 ### 9.4 `BlockFrameBlastWall` hardness double-dips
 
@@ -1194,7 +1206,8 @@ hardness table indexed by tier would be clearer.
 already returns `meta + 5` → `meta + 10`. Probably intentional (blast walls should be harder) but it is invisible
 in the config; document it or move it into the tier table.
 
-**Status: open (cosmetic).** Unchanged: `super.getBlockHardness(...) + 5.0F`.
+**Status: done.** Kept and named: `BlockFrameBlastWall.BLAST_BONUS` is 5, so a blast wall is five harder than the
+frame of its tier. Asserted in-game alongside the frame table.
 
 ### 9.5 `BlockFlora` and `BlockLotus` day/night logic uses `getWorldTime()`
 
@@ -1309,7 +1322,7 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
   metadata-table invariants, and the `@Mod`/`@Instance` agreement.
-* **In-game (1,730 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+* **In-game (1,744 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1317,7 +1330,8 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
-  collision box.
+  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), and the frozen
+  registry-name set.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1346,14 +1360,11 @@ registry:
 1. **Client render paths.** `RenderBlocksInverted` (2,830 lines), `OreRenderer`, `FrameRenderer`, `TextureHandler` and
    every `getIcon` overload. The harness runs a dedicated server (§10.2), so nothing that needs a GL context is
    reachable. §5.12's off-by-one fix in six `getIcon` implementations is verified by reading, not by a test.
-2. **`BlockFrame` hardness.** `meta + 5` and the blast wall's `meta + 10` are two lines of arithmetic with an
-   out-of-range metadata case (§9.3, §9.4) and no assertion. Cheap to add in-game; the only reason it is not there is
-   that the tiers were never pinned.
-3. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
+2. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
    but nothing asserts the property that motivated it: that a query costs O(frequency) and not O(loaded tiles).
-4. **Worldgen determinism.** The blob generators are seeded per chunk; nothing compares a generated chunk against a
+3. **Worldgen determinism.** The blob generators are seeded per chunk; nothing compares a generated chunk against a
    recorded one, so §7.1's refactor has no safety net beyond "the code looks equivalent".
-5. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
+4. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
    through a real connection is not), and `WorldEvent.Unload` handling for the frequency index - tested with a mock
    world, never with a real dimension unload.
 
