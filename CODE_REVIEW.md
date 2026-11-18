@@ -43,6 +43,8 @@
 | 27 | Frame hardness was `meta + 5`, so corrupt metadata invented a hardness; the blast wall's extra 5 was unexplained (§9.3, §9.4) | cleanup | ~~P3~~ done |
 | 28 | Registry names were frozen by §4 but only in prose; nothing failed if one changed | infra | ~~P2~~ done |
 | 29 | `initBlocks` was one 144-line method (§7.4) | refactor | ~~P3~~ done |
+| 30 | 45 registry-name literals scattered across 30 classes (§7.3) | refactor | ~~P3~~ done |
+| 31 | 226 tooltip registrations and five copies of the tooltip lookup (§7.5) | refactor | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -1073,12 +1075,19 @@ produced 16 - and the "intended" 15.5 does not apply to it either, because `1500
 half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
 "Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
 
-### 7.3 Registry names as constants — **open**
+### 7.3 Registry names as constants - **done**
 
-Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
-Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
-`setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
-for the first time.
+Every `registerBlock`/`registerItem` call was made from a constructor with a literal name. Forty-five literals across
+thirty classes are now in `util/Names`: one constant per fixed name, and a builder per family (`rock`, `slab`,
+`stairs`, `ore`, `lamp`, `torch`, `tool`) for the ones composed from parts.
+
+**Status: done.** No name changed - the 155-entry frozen list from the previous batch is the proof, and it is what
+made the sweep safe to do at all. Two names are deliberately not centralised: the bucket keeps its bare vanilla-style
+name, and the fluid blocks take theirs from CoFH's base class, which is handed the namespace.
+
+`NamesTest` pins the builders (case folding for ores, the `tile.` strip in stairs, the inverted lamp prefix) and that
+no two constants collide - except the steel block and the steel item, which share `artifice.steel` across two separate
+registries and always have.
 
 ### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method - **done**
 
@@ -1093,12 +1102,23 @@ assigned in registration order and a world's id table only stays valid if that o
 loud now, and two groups carry the reason they sit where they do: `initFluids` defers to a fluid another mod may have
 registered, and `registerRockBlocks` has to run after the rocks and before the frames.
 
-### 7.5 The tooltip registry is 226 registration calls — **open**
+### 7.5 The tooltip registry is 226 registration calls - **done**
 
-`ArtificeTooltips` (752 lines) is a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)`. A
-`registerTooltips(Block/Item, String... lines)` helper keyed by the same metadata tables would shrink it by
-roughly 60% and make it impossible to forget a subtype. Note `ItemSledge`/`ItemSickle` look up tooltips with
-`getItemDamage() == 0` while `ItemBlockArtifice` uses the real damage — a helper would standardise this.
+`ArtificeTooltips` (752 lines) was a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)` - 226 calls,
+rebuilding the `ItemStack` for every line of every stack.
+
+**Status: done.** Consecutive lines for the same stack go through one `tooltips(stack, line, ...)` call: 226 calls
+become 116 and the file loses 176 lines. The collapse was mechanical and checked - a parser grouped only calls that
+were adjacent, shared a textually identical stack, and were separated by nothing but whitespace - so order and content
+are unchanged by construction.
+
+The lookup was five copies of the same loop, and they had drifted: four honoured `ArtificeConfig.flavorText` and the
+box did not. `ArtificeRegistry.appendTooltips` does it once, with the box passing `allowFlavour = false` explicitly, so
+the difference is a decision rather than an omission. The sledge and sickle looked tooltips up at damage 0, which was
+harmless but said the wrong thing; they now use a wildcard item lookup that would survive a tool gaining metadata.
+
+The in-game tooltip test pins the shape of the two multi-line stacks (a dye: name then flavour; a sledge: name, loss
+chance, flavour) and that the flavour line carries the comment code the renderer filters on.
 
 ### 7.6 Unchecked collections - **done**
 
@@ -1316,13 +1336,13 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ### 10.1 What is covered now
 
-* **Unit (155 tests, 21 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (161 tests, 22 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
-  metadata-table invariants, and the `@Mod`/`@Instance` agreement.
-* **In-game (1,744 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  registry-name builders, the metadata-table invariants, and the `@Mod`/`@Instance` agreement.
+* **In-game (1,750 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1330,8 +1350,8 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
-  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), and the frozen
-  registry-name set.
+  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen
+  registry-name set, and the line order of the multi-line tooltips.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
