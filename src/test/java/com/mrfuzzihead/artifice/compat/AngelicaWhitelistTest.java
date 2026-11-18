@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
+import java.util.Collections;
 
 import org.junit.Assert;
 import org.junit.Rule;
@@ -45,7 +46,7 @@ public class AngelicaWhitelistTest {
 
         Assert.assertEquals(AngelicaWhitelist.Outcome.PATCHED, result.outcome);
         Assert.assertEquals(1, result.replaced);
-        Assert.assertEquals(0, result.residual);
+        Assert.assertTrue(result.unknown.isEmpty());
         Assert.assertTrue(result.changed());
         Assert.assertEquals(before.replace(AngelicaWhitelist.LEGACY_ENTRY, BlockOre.class.getName()), read(file));
     }
@@ -146,25 +147,59 @@ public class AngelicaWhitelistTest {
     }
 
     @Test
-    public void referencesItDoesNotKnowAboutAreReportedNotRewritten() throws IOException {
+    public void everyClassInTheOldPackageIsMovedNotJustTheOreBlock() throws IOException {
+        // Any Artifice class Angelica might name, including ones added to its defaults after this was written.
+        String before = AngelicaWhitelist.LEGACY_ENTRY + "\n"
+            + "shukaro.artifice.block.world.BlockRock\n"
+            + "shukaro.artifice.block.decorative.BlockLamp\n";
+        File file = write(before);
+
+        AngelicaWhitelist.Result result = AngelicaWhitelist.patch(temp.getRoot());
+
+        Assert.assertEquals(AngelicaWhitelist.Outcome.PATCHED, result.outcome);
+        Assert.assertEquals(3, result.replaced);
+        Assert.assertTrue("all three classes exist here: " + result.unknown, result.unknown.isEmpty());
+        Assert.assertFalse(read(file).contains(AngelicaWhitelist.LEGACY_PREFIX));
+        Assert.assertTrue(read(file).contains("com.mrfuzzihead.artifice.block.decorative.BlockLamp"));
+    }
+
+    @Test
+    public void aNameThatDoesNotExistHereIsStillRewrittenButReported() throws IOException {
         String before = AngelicaWhitelist.LEGACY_ENTRY + "\n" + "shukaro.artifice.render.SomeOtherClass\n";
         File file = write(before);
 
         AngelicaWhitelist.Result result = AngelicaWhitelist.patch(temp.getRoot());
 
         Assert.assertEquals(AngelicaWhitelist.Outcome.PATCHED, result.outcome);
-        Assert.assertEquals(1, result.residual);
-        Assert.assertEquals(BlockOre.class.getName() + "\nshukaro.artifice.render.SomeOtherClass\n", read(file));
+        Assert.assertEquals(2, result.replaced);
+        // The rewrite is unconditional; the diagnostic is what tells us Angelica's list changed.
+        Assert
+            .assertEquals(Collections.singletonList("com.mrfuzzihead.artifice.render.SomeOtherClass"), result.unknown);
+        Assert
+            .assertEquals(BlockOre.class.getName() + "\ncom.mrfuzzihead.artifice.render.SomeOtherClass\n", read(file));
     }
 
     @Test
-    public void theResidualCountIgnoresTheEntryItJustRewrote() throws IOException {
-        File file = write(AngelicaWhitelist.LEGACY_ENTRY + "\n");
+    public void anotherModFromTheSameAuthorIsNotTouched() throws IOException {
+        String before = "shukaro.nodalmechanics.common.TileEntityNode\n" + AngelicaWhitelist.LEGACY_ENTRY + "\n";
+        File file = write(before);
 
         AngelicaWhitelist.Result result = AngelicaWhitelist.patch(temp.getRoot());
 
-        Assert.assertEquals(0, result.residual);
+        Assert.assertEquals(1, result.replaced);
+        Assert.assertTrue(read(file).contains("shukaro.nodalmechanics.common.TileEntityNode"));
+    }
+
+    @Test
+    public void theOldPackageDoesNotSurvive() throws IOException {
+        File file = write(AngelicaWhitelist.LEGACY_ENTRY + "\n");
+
+        AngelicaWhitelist.patch(temp.getRoot());
+
         Assert.assertFalse(read(file).contains(AngelicaWhitelist.LEGACY_PREFIX));
+        Assert.assertTrue(
+            "the replacement prefix must be this mod's package",
+            AngelicaWhitelist.CURRENT_PREFIX.startsWith("com.mrfuzzihead.artifice."));
     }
 
     @Test

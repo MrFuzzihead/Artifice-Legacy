@@ -5,20 +5,33 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import org.apache.logging.log4j.Logger;
 
+import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 
 /**
- * Rewrites Angelica's render-pass whitelist so it names this mod's ore block instead of the pre-rename one
- * (CODE_REVIEW Appendix E.5).
+ * Moves any {@code shukaro.artifice.} class name in Angelica's config to this mod's package (CODE_REVIEW Appendix E.5).
  *
  * <p>
  * Angelica's {@code blockCrackFixRenderPassWhitelist} is a list of <em>class-name strings</em> with a default baked
  * into its own jar, and that default still says {@code shukaro.artifice.block.world.BlockOre}. After the package
  * rename the entry no longer matches any block, so Artifice ores silently drop off the whitelist and z-fight when
  * {@code blockCrackFix} is on. There is no API to add to the list, so the config file is the only place to fix it.
+ * </p>
+ *
+ * <p>
+ * The rewrite is the package move itself - every {@code shukaro.artifice.} becomes {@code com.mrfuzzihead.artifice.} -
+ * rather than a single hard-coded class name. It is not a guess: it is the same one-way rename §3 performed, so it
+ * fixes any Artifice class name Angelica carries now or adds later, and a name that resolves to nothing is a no-op
+ * for Angelica either way, since it matches these strings against {@code block.getClass().getName()}. What the
+ * single-name version bought was the <em>diagnostic</em> - knowing when the file names something unexpected - so that
+ * survives: each rewritten name is looked up as a class, and any that this mod does not actually have is logged. The
+ * trailing dot matters: {@code shukaro.nodalmechanics} (same author, different mod) is untouched.
  * </p>
  *
  * <p>
@@ -32,8 +45,7 @@ import com.mrfuzzihead.artifice.block.world.BlockOre;
  * <p>
  * The rewrite is a targeted string replacement, not a parse-and-rewrite: the file is read and written as
  * ISO-8859-1, which maps bytes to chars one-for-one, so comments, ordering, quoting and line endings survive
- * byte-for-byte. Only the one known class name is replaced; any <em>other</em> {@code shukaro.artifice.} reference in
- * the file is reported and left alone, because a class name we did not expect is a reason to look, not to guess.
+ * byte-for-byte.
  * </p>
  */
 public final class AngelicaWhitelist {
@@ -41,14 +53,21 @@ public final class AngelicaWhitelist {
     /** The config file Angelica writes; the default lives in its jar, which is why a fresh instance regresses. */
     public static final String CONFIG_FILE = "angelica-modules.cfg";
 
-    /** The class name Angelica's default list still carries. */
-    public static final String LEGACY_ENTRY = "shukaro.artifice.block.world.BlockOre";
-
-    /** The old package prefix, used only to notice references this class does not know about. */
+    /** The package prefix this mod used to live under, with the dot so it cannot match {@code shukaro.artifice2}. */
     public static final String LEGACY_PREFIX = "shukaro.artifice.";
+
+    /** The class name Angelica's default list carries, kept for the log line and the tests. */
+    public static final String LEGACY_ENTRY = LEGACY_PREFIX + "block.world.BlockOre";
+
+    /** The replacement, read from the mod's own package so a move cannot leave a stale literal here. */
+    public static final String CURRENT_PREFIX = ArtificeCore.class.getPackage()
+        .getName() + ".";
 
     /** A byte-preserving charset: one byte maps to one char, so a round trip cannot corrupt the rest of the file. */
     private static final Charset BYTES = Charset.forName("ISO-8859-1");
+
+    /** How many unresolved names the log line names before it stops counting them out. */
+    private static final int LOGGED_UNKNOWN = 5;
 
     private AngelicaWhitelist() {}
 
@@ -56,11 +75,11 @@ public final class AngelicaWhitelist {
     public enum Outcome {
         /** No {@code angelica-modules.cfg} in the config directory: Angelica is not installed. */
         NO_FILE,
-        /** The file already names this mod's class and nothing was written. */
+        /** The file already names this mod's package and nothing was written. */
         ALREADY_CURRENT,
-        /** The legacy entry was replaced and the file was written. */
+        /** Legacy references were rewritten and the file was written. */
         PATCHED,
-        /** The file exists but never mentioned our ore block, so there was nothing to replace. */
+        /** The file exists but names nothing from this mod, so there was nothing to replace. */
         NOT_LISTED,
         /** Reading or writing failed; the file is untouched. */
         FAILED
@@ -70,19 +89,19 @@ public final class AngelicaWhitelist {
     public static final class Result {
 
         public final Outcome outcome;
-        /** How many legacy entries were replaced. */
+        /** How many legacy package references were replaced. */
         public final int replaced;
-        /** How many {@code shukaro.artifice.} references remain afterwards that this class did not rewrite. */
-        public final int residual;
+        /** Rewritten class names that do not exist in this mod, in first-seen order; usually empty. */
+        public final List<String> unknown;
         /** The file that was examined, for the log line. */
         public final File file;
         /** The failure, when {@link #outcome} is {@link Outcome#FAILED}; otherwise null. */
         public final String error;
 
-        Result(Outcome outcome, int replaced, int residual, File file, String error) {
+        Result(Outcome outcome, int replaced, List<String> unknown, File file, String error) {
             this.outcome = outcome;
             this.replaced = replaced;
-            this.residual = residual;
+            this.unknown = Collections.unmodifiableList(unknown);
             this.file = file;
             this.error = error;
         }
@@ -96,34 +115,37 @@ public final class AngelicaWhitelist {
             switch (this.outcome) {
                 case PATCHED:
                     logger.info(
-                        "Angelica: rewrote {} legacy class name(s) in {} ({} other shukaro.artifice reference(s) left alone)",
+                        "Angelica: moved {} {} reference(s) in {} to {}",
                         this.replaced,
+                        LEGACY_PREFIX,
                         this.file.getName(),
-                        this.residual);
+                        CURRENT_PREFIX);
                     break;
                 case ALREADY_CURRENT:
-                    logger.debug("Angelica: {} already names {}", this.file.getName(), currentEntry());
+                    logger.debug("Angelica: {} already names {}", this.file.getName(), CURRENT_PREFIX);
                     break;
                 case NOT_LISTED:
-                    logger.debug("Angelica: {} does not mention {}, nothing to do", this.file.getName(), LEGACY_ENTRY);
+                    logger.debug("Angelica: {} names nothing from this mod, nothing to do", this.file.getName());
                     break;
                 case NO_FILE:
                     logger.debug("Angelica: no {} in the config directory", CONFIG_FILE);
                     break;
                 default:
                     logger.warn(
-                        "Angelica: could not update {} - the ore block stays off the render-pass whitelist ({})",
+                        "Angelica: could not update {} - Artifice ores stay off the render-pass whitelist ({})",
                         this.file,
                         this.error);
                     break;
             }
 
-            if (this.residual > 0) {
+            if (!this.unknown.isEmpty()) {
                 logger.warn(
-                    "Angelica: {} still contains {} shukaro.artifice reference(s) that this mod does not know about;"
+                    "Angelica: {} names {} class(es) this mod does not have after the rewrite: {}{};"
                         + " check {} by hand",
                     this.file.getName(),
-                    this.residual,
+                    this.unknown.size(),
+                    this.unknown.subList(0, Math.min(LOGGED_UNKNOWN, this.unknown.size())),
+                    this.unknown.size() > LOGGED_UNKNOWN ? " and more" : "",
                     this.file);
             }
         }
@@ -131,7 +153,7 @@ public final class AngelicaWhitelist {
         @Override
         public String toString() {
             return this.outcome + (this.replaced > 0 ? " x" + this.replaced : "")
-                + (this.residual > 0 ? " +" + this.residual + " residual" : "");
+                + (this.unknown.isEmpty() ? "" : " +" + this.unknown.size() + " unknown");
         }
     }
 
@@ -141,7 +163,7 @@ public final class AngelicaWhitelist {
     }
 
     /**
-     * Rewrites {@code configDir/angelica-modules.cfg} if it carries the legacy class name.
+     * Rewrites {@code configDir/angelica-modules.cfg} if it carries the legacy package.
      *
      * <p>
      * Never throws: a failure to write another mod's config must not stop this mod from loading.
@@ -152,30 +174,70 @@ public final class AngelicaWhitelist {
     public static Result patch(File configDir) {
         File file = new File(configDir, CONFIG_FILE);
         if (!file.isFile()) {
-            return new Result(Outcome.NO_FILE, 0, 0, file, null);
+            return new Result(Outcome.NO_FILE, 0, Collections.<String>emptyList(), file, null);
         }
 
         String text;
         try {
             text = new String(Files.readAllBytes(file.toPath()), BYTES);
         } catch (IOException | RuntimeException e) {
-            return new Result(Outcome.FAILED, 0, 0, file, describe(e));
+            return new Result(Outcome.FAILED, 0, Collections.<String>emptyList(), file, describe(e));
         }
 
-        int replaced = count(text, LEGACY_ENTRY);
+        int replaced = count(text, LEGACY_PREFIX);
         if (replaced == 0) {
-            Outcome outcome = text.contains(currentEntry()) ? Outcome.ALREADY_CURRENT : Outcome.NOT_LISTED;
-            return new Result(outcome, 0, count(text, LEGACY_PREFIX), file, null);
+            Outcome outcome = text.contains(CURRENT_PREFIX) ? Outcome.ALREADY_CURRENT : Outcome.NOT_LISTED;
+            return new Result(outcome, 0, Collections.<String>emptyList(), file, null);
         }
 
-        String patched = text.replace(LEGACY_ENTRY, currentEntry());
+        // Before the rewrite, while the old names are still there to walk.
+        List<String> unknown = unknownClasses(text);
+        String patched = text.replace(LEGACY_PREFIX, CURRENT_PREFIX);
         try {
             write(file, patched);
         } catch (IOException | RuntimeException e) {
-            return new Result(Outcome.FAILED, 0, 0, file, describe(e));
+            return new Result(Outcome.FAILED, 0, Collections.<String>emptyList(), file, describe(e));
         }
 
-        return new Result(Outcome.PATCHED, replaced, count(patched, LEGACY_PREFIX), file, null);
+        return new Result(Outcome.PATCHED, replaced, unknown, file, null);
+    }
+
+    /**
+     * Walks every legacy reference and reports the ones that would name a class this mod does not have - which is how
+     * we learn that Angelica's default list changed, without refusing to fix the names we do understand.
+     */
+    private static List<String> unknownClasses(String text) {
+        List<String> unknown = new ArrayList<>();
+        int at = text.indexOf(LEGACY_PREFIX);
+        while (at >= 0) {
+            int end = at;
+            while (end < text.length() && isNameChar(text.charAt(end))) {
+                end++;
+            }
+            String rewritten = CURRENT_PREFIX + text.substring(at + LEGACY_PREFIX.length(), end);
+            if (!unknown.contains(rewritten) && !classExists(rewritten)) {
+                unknown.add(rewritten);
+            }
+            at = text.indexOf(LEGACY_PREFIX, end);
+        }
+        return unknown;
+    }
+
+    private static boolean isNameChar(char c) {
+        return Character.isLetterOrDigit(c) || c == '.' || c == '_' || c == '$';
+    }
+
+    /**
+     * Resolves without initialising: this asks whether the class is in the jar, not whether it can be used yet, and
+     * loading a block class before its mod's {@code preInit} would be a bad idea.
+     */
+    private static boolean classExists(String name) {
+        try {
+            Class.forName(name, false, AngelicaWhitelist.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError e) {
+            return false;
+        }
     }
 
     /**

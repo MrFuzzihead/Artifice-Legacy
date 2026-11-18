@@ -1412,19 +1412,25 @@ update regenerates the wrong value and Artifice ores drop off the whitelist (z-f
   survive byte-for-byte - asserted by `AngelicaWhitelistTest.lineEndingsSurvive` and
   `bytesThatAreNotAsciiArePreserved`. It is written through a sibling temp file and renamed over the target, so an
   interrupted write cannot leave a truncated config for Angelica to read as "the player removed everything".
-* **Only the known class name.** Any *other* `shukaro.artifice.` reference in the file is counted and logged, not
-  rewritten: an unexpected class name is a reason to look, not to guess.
+* **The whole prefix, not one class name.** Every `shukaro.artifice.` becomes `com.mrfuzzihead.artifice.`. That is not
+  a guess - it is the same one-way rename §3 performed - so it fixes any Artifice class Angelica names now or adds
+  later, and a name that resolves to nothing is a no-op for Angelica either way, since it compares these strings with
+  `block.getClass().getName()`. The trailing dot keeps `shukaro.nodalmechanics` (same author, different mod) out of it.
+  What a single-name rewrite would have bought is the *diagnostic*, so that survives separately: each rewritten name is
+  resolved as a class (`Class.forName(..., false, ...)`, no initialisation), and any this mod does not have is logged,
+  which is how we would notice Angelica's default list changing.
 * **Never fatal.** A failure to write somebody else's config logs a warning and the mod loads; `AngelicaWhitelistTest`
   covers the missing file, a directory where the file should be, and the no-op re-run.
 
-Verified end to end by dropping a real `angelica-modules.cfg` (CRLF, legacy entry) into `run/server/config` and running
-the in-game suite: one rewrite, every other byte identical, `1763/1763` checks green.
+Verified end to end by dropping a real `angelica-modules.cfg` (CRLF) naming `BlockOre`, `BlockRock` and
+`shukaro.nodalmechanics` into `run/server/config` and running the in-game suite: two references moved, the other mod's
+package untouched, every other byte identical, `1763/1763` checks green.
 
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (190 tests, 25 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (192 tests, 25 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
@@ -1797,12 +1803,12 @@ shukaro.artifice.block.world.BlockOre   ->   com.mrfuzzihead.artifice.block.worl
 ```
 
 Because the *default* lives in Angelica's jar, a fresh instance will regress. Worth a one-line upstream PR that
-lists both class names.
+lists both class names - though as of §9.12 it is no longer required for this pack.
 
 **Done from our side instead: `compat/AngelicaWhitelist` rewrites the file at startup** (§9.12). It runs from
-`FMLConstructionEvent` - before any mod's `preInit` reads its config - and again at `FMLLoadCompleteEvent`, patches only
-this one class name, reports any other `shukaro.artifice.` reference without touching it, and preserves every other byte
-of the file. `AngelicaWhitelistTest` covers the rewrite, the CRLF and non-ASCII round trips, the no-op re-run, and the
+`FMLConstructionEvent` - before any mod's `preInit` reads its config - and again at `FMLLoadCompleteEvent`. It moves
+every `shukaro.artifice.` class name in the file to `com.mrfuzzihead.artifice.`, reports any that this mod does not
+actually have, and preserves every other byte of the file. `AngelicaWhitelistTest` covers the rewrite, the CRLF and non-ASCII round trips, the no-op re-run, and the
 absent-file case; the hook was verified end to end against a real config in `run/server/config`. The upstream PR is
 still worth making - it is the only fix that survives a fresh install - but it is no longer required for this pack.
 
