@@ -441,6 +441,16 @@ silk touch, or `createStackedBlock`. GTNH packs usually have all of these, but a
 
 Fix: null-check and fall back to `Item.getItemFromBlock(this)` / the block's own drops.
 
+**Status: fixed on `refactor/1.1.6`.** The fallbacks live in `util/OreDictFallback` (`item`, `blockStack`, `meta`) and
+all four paths in `BlockOre` go through them: `getItemDropped`, `damageDropped`, `getExpDrop` and
+`createStackedBlock`. With no dictionary entry the ore drops as itself, which is recoverable, rather than throwing.
+
+Pinned where it can be: `OreDictionary.getOres(...)` hands out an immutable list in this Forge version, so an ore
+cannot be unregistered in-game to drive the null path through the block. The in-game test drives the helpers with a
+null entry (the exact state the old code dereferenced) for all 15 ore types, and separately asserts that
+`BlockOre#getItemDropped` really does route through the entry for a registered ore, so the wiring is covered even
+though the null branch is pinned one level in.
+
 ### 5.10 `TileEntityLogic.readFromNBT` indexes the sides array unchecked — **P2**
 
 `tile/TileEntityLogic.java:100-104`:
@@ -939,13 +949,21 @@ concrete risks: (a) a pack that counts ores (vein miner, ore-finder tools) sees 
 cascade with CoFH's retrogen. Strongly consider a config flag (`convertOtherModOres`, default on) and a per-ore
 log at debug level.
 
-### 9.2 Ore smelting recipes never register
+### 9.2 Ore smelting recipes never register — **fixed**
 
 `ArtificeRecipes.registerOreRecipes` (`:842`) runs in `init`, but the ore-dictionary entries for `blockOres` only
 appear in `postInit` (`ArtificeBlocks.registerOreVariants`). `ItemHelper.getOreName(stack)` therefore returns
 `"Unknown"` for every one of the 15×9 ore blocks and no smelting recipe is added. Move `registerOreVariants()` to
 `preInit` (after `initBlocks`), which also makes the ore dictionary complete before other mods' `init` runs — a
 compat improvement in itself.
+
+**Status: fixed on `refactor/1.1.6`** — exactly that move: `registerOreVariants()` is called from `preInit` right
+after `ArtificeBlocks.initBlocks()` and removed from `postInit`. `initOreSet()` (which collects *other* mods' ores)
+stays in `postInit`, where it belongs.
+
+The in-game test checks all 8 vanilla-mapped ores × 9 rock variants against the smelting registry (72 assertions).
+Against the old ordering it reports "the ore smelting recipes registered at all (1 ores)" - one ore was getting a
+recipe from a different code path, which is why the miss was easy to overlook.
 
 ### 9.3 `BlockFrame` hardness scales with metadata — including invalid metadata
 
