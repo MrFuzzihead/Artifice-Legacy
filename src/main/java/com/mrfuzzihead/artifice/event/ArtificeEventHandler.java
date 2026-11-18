@@ -6,6 +6,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.world.WorldEvent;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
@@ -13,6 +14,15 @@ import com.mrfuzzihead.artifice.ArtificeEnchants;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 
 public class ArtificeEventHandler {
+
+    /**
+     * A world that is unloaded never ticks again, so its tile entities never reach {@code invalidate()} - the
+     * frequency index would keep them forever (CODE_REVIEW §6).
+     */
+    @SubscribeEvent
+    public void onWorldUnload(WorldEvent.Unload event) {
+        Tracking.forget(event.world);
+    }
 
     @SubscribeEvent
     public void onDeath(LivingDeathEvent event) {

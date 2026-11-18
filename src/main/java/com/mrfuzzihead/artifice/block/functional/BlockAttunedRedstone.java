@@ -73,13 +73,14 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
             TileEntity te = world.getTileEntity(x, y, z);
             if (te instanceof TileEntityAttuned) {
                 TileEntityAttuned tea = (TileEntityAttuned) te;
-                if (tea.frequency.length() > 0) {
+                if (tea.getFrequency()
+                    .length() > 0) {
                     MiscUtils.addChatMessage(
                         player,
                         FormatCodes.Italic.code + StatCollector.translateToLocal("chat.artifice.frequency")
                             + " "
                             + FormatCodes.Aqua.code
-                            + tea.frequency);
+                            + tea.getFrequency());
                 } else {
                     MiscUtils.addChatMessage(
                         player,
@@ -98,8 +99,9 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
         TileEntity te = world.getTileEntity(x, y, z);
         if (te instanceof TileEntityAttuned) {
             TileEntityAttuned tea = (TileEntityAttuned) te;
-            if (tea.frequency.length() > 0) {
-                stack.setStackDisplayName(tea.frequency);
+            if (tea.getFrequency()
+                .length() > 0) {
+                stack.setStackDisplayName(tea.getFrequency());
             }
         }
 
@@ -132,8 +134,9 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
         TileEntity te = world.getTileEntity(x, y, z);
         if (te instanceof TileEntityAttuned) {
             TileEntityAttuned tea = (TileEntityAttuned) te;
-            if (tea.frequency.length() > 0) {
-                Tracking.updateFrequency(tea.frequency);
+            if (tea.getFrequency()
+                .length() > 0) {
+                Tracking.updateFrequency(tea.getFrequency());
             }
         }
     }
@@ -144,8 +147,8 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
         if (te instanceof TileEntityAttuned) {
             TileEntityAttuned tea = (TileEntityAttuned) te;
             if (stack.hasDisplayName()) {
-                tea.frequency = stack.getDisplayName();
-                Tracking.updateFrequency(tea.frequency);
+                tea.setFrequency(stack.getDisplayName());
+                Tracking.updateFrequency(tea.getFrequency());
             }
         }
     }
@@ -161,8 +164,9 @@ public class BlockAttunedRedstone extends Block implements ITileEntityProvider {
             if (te instanceof TileEntityAttuned) {
                 ItemStack stack = new ItemStack(world.getBlock(x, y, z), 1, 0);
                 TileEntityAttuned tea = (TileEntityAttuned) te;
-                if (tea.frequency.length() > 0) {
-                    stack.setStackDisplayName(tea.frequency);
+                if (tea.getFrequency()
+                    .length() > 0) {
+                    stack.setStackDisplayName(tea.getFrequency());
                     Tracking.updateFrequency(stack.getDisplayName());
                 }
 

@@ -37,6 +37,7 @@ import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
+import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
 import com.mrfuzzihead.artifice.recipe.BoxCraftingHandler;
@@ -1091,8 +1092,8 @@ public final class ServerGameTests {
             TileEntityAttuned receiver = (TileEntityAttuned) receiverTile;
             TileEntityAttuned transmitter = (TileEntityAttuned) transmitterTile;
 
-            receiver.frequency = frequency;
-            transmitter.frequency = frequency;
+            receiver.setFrequency(frequency);
+            transmitter.setFrequency(frequency);
 
             // Drive the receiver directly: the block-power read is covered by the unit-level getPower() contract,
             // and going through the real redstone rules here would make the test depend on vanilla power semantics.
@@ -1111,9 +1112,40 @@ public final class ServerGameTests {
                 ArtificeBlocks.blockAttunedRedstoneReceiver.isProvidingWeakPower(world, site.x, site.y, site.z, 0));
 
             // Different frequencies must not couple.
-            transmitter.frequency = "artifice-gametest-other";
+            transmitter.setFrequency("artifice-gametest-other");
             transmitter.updateEntity();
             checkEquals("a different frequency does not couple", 0, transmitter.power);
+
+            transmitter.setFrequency(frequency);
+            transmitter.updateEntity();
+            checkEquals("re-pairing restores the link", 12, transmitter.power);
+
+            // Only receivers answer. A transmitter carries the same power field, so on a shared frequency it would
+            // out-vote the receiver it is relaying if the block type were not checked (CODE_REVIEW §6).
+            //
+            // Queried through Tracking rather than the transmitter, because the transmitter emitting its power
+            // notifies its neighbours, and that notification re-derives the receiver's power from a world that has no
+            // redstone attached - which would overwrite the value under test.
+            site.setBlock(site.x + 2, site.y + 1, site.z, ArtificeBlocks.blockAttunedRedstoneTransmitter, 0);
+            TileEntity second = world.getTileEntity(site.x + 2, site.y + 1, site.z);
+            check("a second transmitter has a tile entity", second instanceof TileEntityAttuned);
+            if (second instanceof TileEntityAttuned) {
+                TileEntityAttuned peer = (TileEntityAttuned) second;
+                peer.setFrequency(frequency);
+                peer.power = 15;
+                receiver.power = 12;
+
+                checkEquals(
+                    "a transmitter is not a power source for its own frequency",
+                    12,
+                    Tracking.getHighestFrequencyPower(frequency));
+
+                // Breaking it takes it out of the index, so the next query does not have to skip a dead tile.
+                world.setBlockToAir(site.x + 2, site.y + 1, site.z);
+                check("breaking a tile removes it from the index", peer.isInvalid());
+                receiver.power = 12;
+                checkEquals("the link survives a peer being broken", 12, Tracking.getHighestFrequencyPower(frequency));
+            }
         } finally {
             site.clear();
         }
