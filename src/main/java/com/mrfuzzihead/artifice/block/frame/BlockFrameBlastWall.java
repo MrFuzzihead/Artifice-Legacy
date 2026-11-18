@@ -76,8 +76,14 @@ public class BlockFrameBlastWall extends BlockFrame {
         }
     }
 
+    /**
+     * A blast wall is five harder than the frame of the same tier - the "double dip" CODE_REVIEW §9.4 noticed is
+     * deliberate, and now it says so instead of looking like arithmetic that forgot its superclass.
+     */
+    public static final float BLAST_BONUS = 5.0F;
+
     @Override
     public float getBlockHardness(World world, int x, int y, int z) {
-        return super.getBlockHardness(world, x, y, z) + 5.0F;
+        return super.getBlockHardness(world, x, y, z) + BLAST_BONUS;
     }
 }

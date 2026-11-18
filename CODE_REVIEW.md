@@ -21,17 +21,17 @@
 | 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done |
 | 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | ~~P1~~ done |
 | 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | ~~P1~~ done |
-| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** |
-| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | P2 |
-| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | P2 |
-| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | P2 |
-| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | P2 |
-| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | P2 |
-| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | P2 |
-| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | P2 |
-| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | P2 |
-| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | P3 |
-| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 |
+| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** (open - needs a keep-or-delete decision) |
+| 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | ~~P2~~ done |
+| 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | ~~P2~~ done |
+| 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | ~~P2~~ done |
+| 12 | `BlockLogicRedstone.canConnectRedstone` uses a hand-rolled side table that does not match `isProvidingWeakPower`'s `OPPOSITES` mapping | bug | ~~P2~~ done |
+| 13 | `BlockOre` NPEs when an ore-dictionary entry it expects is absent (very likely in a GTNH pack) | bug | ~~P2~~ done |
+| 14 | Ore smelting recipes are registered in `init` but the ore-dictionary entries they match on only appear in `postInit`, so they never register | bug | ~~P2~~ done |
+| 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | ~~P2~~ done |
+| 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | ~~P2~~ done |
+| 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | ~~P3~~ done (deleted) |
+| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 (open - §7.1) |
 | 19 | `ItemSledge` scans the whole crafting table on every block break | perf | ~~P3~~ done |
 | 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
 | 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
@@ -40,6 +40,9 @@
 | 24 | Mod id, name and version each existed twice, plus an unused `modChannel` (§8) | cleanup | ~~P3~~ done |
 | 25 | Raw `ArrayList`/`ArrayDeque` casts throughout worldgen and the tick handler (§7.6) | cleanup | ~~P3~~ done |
 | 26 | Six unnamed literals on hot or hard-to-read paths (§7.7) | cleanup | ~~P3~~ done |
+| 27 | Frame hardness was `meta + 5`, so corrupt metadata invented a hardness; the blast wall's extra 5 was unexplained (§9.3, §9.4) | cleanup | ~~P3~~ done |
+| 28 | Registry names were frozen by §4 but only in prose; nothing failed if one changed | infra | ~~P2~~ done |
+| 29 | `initBlocks` was one 144-line method (§7.4) | refactor | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -55,9 +58,10 @@ are not codebase defects, but they decide whether the migration boots at all.
 | P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
 | P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
 
-P1 and P2 are **done**, in two halves that still have to be released together: the in-tree allocation and the
-70/71/72 assertion are on `refactor/1.1.6` here (§5.3), and the mixin, its config key and FuzziTweaks'
-`shukaro.artifice` compile dependency are gone on `refactor/drop-artifice-mixin` there. P3 and P4 are untouched.
+P1 and P2 are **done and merged**, in two halves that have to be released together: the in-tree allocation and the
+70/71/72 assertion are in this repo (§5.3), and the mixin, its config key and FuzziTweaks' `shukaro.artifice` compile
+dependency are gone on `refactor/drop-artifice-mixin` there. Cutting 1.1.6 is what releases them as one event. P3 and
+P4 are untouched.
 
 ---
 
@@ -201,7 +205,11 @@ public int hashCode() {
 }
 ```
 
-Acceptance test: `NameMetaPairTest.wildcardPairIsFindableInAHashSet` (`@Ignore`d today).
+Acceptance test: `NameMetaPairTest.wildcardPairIsFindableInAHashSet`, which passes now - a `-1` key and a concrete
+key hash alike and match each other in a `HashSet`, while two concrete keys with different metadata still do not.
+`WorldGenVolcano`'s `replaced` set therefore matches again, which matters if the volcano is ever wired up (§8).
+
+**Status: fixed on `refactor/1.1.6`.**
 
 ### 5.2 `DispenserBehaviorSledge` NPEs on every dispense — **P1**
 
@@ -344,6 +352,11 @@ if (world.blockExists(x + dir.offsetX, y + dir.offsetY, z + dir.offsetZ)) {   //
 After the first expansion every neighbour of the origin is already in `done`, so nothing new is ever queued: the
 "adjoined" set is the origin plus its immediate same-class neighbours. The method is currently unused (see §8), so
 this is latent — but it is a trap for whoever wires it up.
+
+**Status: fixed on `refactor/1.1.6`.** The expansion now uses the tile it just popped (`te.xCoord/yCoord/zCoord`),
+and `MiscUtilsTest.getAdjoinedTileEntitiesWalksTheWholeConnectedRun` pins it with a 1x1x4 run of furnaces: the old
+code returned two of the four, the new code returns all four. The method is still unused (§8) - fixing it did not
+give it a caller.
 
 ### 5.6 `ArtificeTickHandler` never dequeues suspendable generators — **P1 (unbounded growth)**
 
@@ -813,12 +826,15 @@ enchantment, so a hit wears the armour that is actually absorbing it.
 Game test: diamond helmet with resistance I plus a plain diamond chestplate, 20 magic hits. New code: 20 on the
 helmet, 0 on the chestplate. Old code: 16 and 4 - the random pick hit an unenchanted piece four times.
 
-### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance)**
+### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance), open**
 
 `recipe/ArtificeRecipes.java:209-222` sets `"charge" = nuclearBatteryCapacity` on the recipe output, and
 `BlockNuclearBattery.onBlockPlacedBy` adopts it. So one craft = 1,000,000,000 RF from nothing (there is no way to
 recharge, so this is the *only* source). If that is intended as "a battery comes pre-charged", fine, but then the
 capacity default and the recipe cost should be revisited; if not, drop the NBT from the recipe output.
+
+**Status: open, waiting on a decision.** The recipe still stamps the full capacity. Whichever way it goes, the in-game
+battery test already reads the crafted stack's NBT, so the change is two lines with a test in place.
 
 ### 5.28 `BlockFrameGlassWall` / `BlockFrameScaffold` `getIcon(IBlockAccess)` mismatch — **P3**
 
@@ -938,8 +954,7 @@ client run to confirm nothing else subscribed.
 
 ## 6. Performance
 
-Status key: **done** = fixed on `refactor/1.1.6` / `perf/hot-paths`; **open** = still there; **left** = deliberately
-not changed.
+Status key: **done** = fixed; **open** = still there; **left** = deliberately not changed.
 
 | Location | Issue | Fix | Status |
 |---|---|---|---|
@@ -988,7 +1003,7 @@ pins the property and fails on the rotation.
 
 ## 7. Refactors
 
-### 7.1 One blob generator instead of four (≈700 lines removed)
+### 7.1 One blob generator instead of four (≈700 lines removed) — **open**
 
 `WorldGenCluster.ClusterGen` (`:139-215`), `WorldGenSulfur.SulfurGen` (`:145-230`) and
 `WorldGenDesert.NiterGen` (`:140-225`) are near-identical: same `TMap<ChunkCoord, ArrayList<BlockCoord>>`, same
@@ -1058,20 +1073,27 @@ produced 16 - and the "intended" 15.5 does not apply to it either, because `1500
 half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
 "Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
 
-### 7.3 Registry names as constants
+### 7.3 Registry names as constants — **open**
 
 Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
 Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
 `setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
 for the first time.
 
-### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method
+### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method - **done**
 
-Split into `initRocks`, `initOres`, `initFrames`, `initDecorative`, `initFluids`, `initFunctional`, each with a
-static field group. The current method constructs ~120 blocks and registers ~40 of them in one go, which makes the
-registration order (and therefore the block/item name coupling) very hard to reason about.
+Split into `initFlora`, `initRocks`, `initOres`, `initFluids`, `initDecorative`, `registerRockBlocks`, `initFrames`,
+`initFunctional` - the groups it always had, called in the order it always ran them. The method constructed ~120
+blocks and registered ~40 of them in one go, with slab registration and four ore-dictionary batches interleaved
+between the construction lines.
 
-### 7.5 The tooltip registry is 226 registration calls
+**Status: done.** Pure extraction: the concatenated statement sequence is byte-identical to the original 125
+statements, verified mechanically rather than by eye, so no block id moved - which matters, because block ids are
+assigned in registration order and a world's id table only stays valid if that order does. `initBlocks` says so out
+loud now, and two groups carry the reason they sit where they do: `initFluids` defers to a fluid another mod may have
+registered, and `registerRockBlocks` has to run after the rocks and before the frames.
+
+### 7.5 The tooltip registry is 226 registration calls — **open**
 
 `ArtificeTooltips` (752 lines) is a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)`. A
 `registerTooltips(Block/Item, String... lines)` helper keyed by the same metadata tables would shrink it by
@@ -1148,6 +1170,10 @@ concrete risks: (a) a pack that counts ores (vein miner, ore-finder tools) sees 
 cascade with CoFH's retrogen. Strongly consider a config flag (`convertOtherModOres`, default on) and a per-ore
 log at debug level.
 
+**Status: open, waiting on a decision.** `initOreSet` still collects every mod's stacks for each `oreNames` entry, and
+`WorldGenLayer`/`WorldGenCluster` still replace them. It is the one remaining item that changes what the world
+generator does to another mod's terrain, which is why it is a decision and not a patch.
+
 ### 9.2 Ore smelting recipes never register — **fixed**
 
 `ArtificeRecipes.registerOreRecipes` (`:842`) runs in `init`, but the ore-dictionary entries for `blockOres` only
@@ -1170,17 +1196,26 @@ recipe from a different code path, which is why the miss was easy to overlook.
 `BlockRock.getIcon` clamps at 6), so a block placed with corrupt metadata 7 has hardness 12. Harmless, but a
 hardness table indexed by tier would be clearer.
 
+**Status: done.** Hardness is a four-entry table in tier order, clamped to the first tier for metadata that is not a
+tier - the same treatment §5.12 gave icons - so corrupt metadata 7 now behaves like Basic (5.0) instead of inventing
+12. Asserted in-game for every tier, and for metadata 7 both through the world and directly.
+
 ### 9.4 `BlockFrameBlastWall` hardness double-dips
 
 `BlockFrameBlastWall.getBlockHardness` (`:80`) returns `super.getBlockHardness(...) + 5`, and the superclass
 already returns `meta + 5` → `meta + 10`. Probably intentional (blast walls should be harder) but it is invisible
 in the config; document it or move it into the tier table.
 
+**Status: done.** Kept and named: `BlockFrameBlastWall.BLAST_BONUS` is 5, so a blast wall is five harder than the
+frame of its tier. Asserted in-game alongside the frame table.
+
 ### 9.5 `BlockFlora` and `BlockLotus` day/night logic uses `getWorldTime()`
 
 `WorldGenFlowers` writes the open/closed lotus metadata based on `world.getWorldTime() > 12000L`, and
 `BlockLotus.updateTick` flips it on light level. On a world with a fixed time (e.g. a "permanent day" dimension)
 the generation state is arbitrary. Cosmetic.
+
+**Status: open (cosmetic).** `WorldGenFlowers` still branches on `world.getWorldTime() > 12000L`.
 
 ### 9.6 `ItemBox` stores numeric item ids
 
@@ -1281,13 +1316,13 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ### 10.1 What is covered now
 
-* **Unit (141 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (155 tests, 21 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
-  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, plus the
-  metadata-table invariants and the `@Mod`/`@Instance` agreement.
-* **In-game (1,730 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
+  metadata-table invariants, and the `@Mod`/`@Instance` agreement.
+* **In-game (1,744 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1295,7 +1330,8 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
-  collision box.
+  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), and the frozen
+  registry-name set.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1314,14 +1350,23 @@ The remaining 95% is dominated by classes that cannot be instantiated without a 
 Realistic headless ceiling with the current structure: **~12–15%**. Extracting the frequency helper (§7.2), the
 slab `getHalfSlab` map (§5.29) would each add pure testable surface.
 
-### 10.3 Next tests to add (in priority order)
+### 10.3 What is still untested
 
-1. `MiscUtils` neighbour iteration, once fixed — assert all six directions are visited exactly once.
-2. The §7.2 frequency helper, once extracted.
-3. A game-test assertion that a crafted nuclear battery's NBT matches the configured capacity (pins §5.27 either
-   way).
-4. A game-test assertion that `BlockFrameScaffold` supports a 3-tall tower (pins §5.7).
-6. A game-test assertion that breaking an `oreIron` block yields an iron-ore item and drops XP (§5.9).
+The list this section used to hold is complete: the `MiscUtils` six-direction iteration, the §7.2 frequency helper,
+the battery's NBT capacity, the scaffold tower and the `oreIron` drop are all asserted. What is genuinely uncovered
+now is a different set, and it is mostly the client and the paths that need a running game rather than a bootstrapped
+registry:
+
+1. **Client render paths.** `RenderBlocksInverted` (2,830 lines), `OreRenderer`, `FrameRenderer`, `TextureHandler` and
+   every `getIcon` overload. The harness runs a dedicated server (§10.2), so nothing that needs a GL context is
+   reachable. §5.12's off-by-one fix in six `getIcon` implementations is verified by reading, not by a test.
+2. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
+   but nothing asserts the property that motivated it: that a query costs O(frequency) and not O(loaded tiles).
+3. **Worldgen determinism.** The blob generators are seeded per chunk; nothing compares a generated chunk against a
+   recorded one, so §7.1's refactor has no safety net beyond "the code looks equivalent".
+4. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
+   through a real connection is not), and `WorldEvent.Unload` handling for the frequency index - tested with a mock
+   world, never with a real dimension unload.
 
 ---
 
@@ -1369,8 +1414,10 @@ names the mod emits today, and the names §4 keeps.
 | Craft kit | `Artifice:item.artifice.craftkit` |
 | Bucket | `Artifice:item.bucket` |
 
-Pair-count sanity check: the game test asserts uniqueness across **both** registries and that every block has an
-`ItemBlock` under the same name.
+There are **155** names in total (blocks and items together). The game test asserts uniqueness across both registries,
+that every block has an `ItemBlock` under the same name, and - since this appendix is a freeze (§4) - that the set
+matches the list in `ServerGameTests.FROZEN_REGISTRY_NAMES` exactly. Adding a block means adding a line there, which
+is the point: it makes the decision explicit and keeps this table honest.
 
 ## Appendix B — Config surface
 
