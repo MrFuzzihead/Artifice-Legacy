@@ -1,6 +1,5 @@
 package com.mrfuzzihead.artifice.world;
 
-import java.util.ArrayList;
 import java.util.Random;
 import java.util.Set;
 
@@ -11,13 +10,9 @@ import net.minecraft.world.World;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.util.BlockCoord;
-import com.mrfuzzihead.artifice.util.ChunkCoord;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
-import com.mrfuzzihead.artifice.util.PendingChunks;
 
 import cofh.api.world.IFeatureGenerator;
-import gnu.trove.map.TMap;
-import gnu.trove.map.hash.THashMap;
 import gnu.trove.set.hash.THashSet;
 
 public class WorldGenDesert implements IFeatureGenerator {
@@ -93,105 +88,21 @@ public class WorldGenDesert implements IFeatureGenerator {
         return !b.isAir(world) && this.replaced.contains(pair);
     }
 
-    private class NiterGen implements ISuspendableGen {
+    /** niter is the same shape as sulfur: the candidate check decides, the placement is unconditional. */
+    private class NiterGen extends BlobGen {
 
-        private World world;
-        private Random rand;
-        private BlockCoord coord;
-        private TMap<ChunkCoord, ArrayList<BlockCoord>> toGen;
-        private int size;
-
-        public NiterGen(World world, Random rand, BlockCoord start, int size) {
-            this.world = world;
-            this.rand = rand;
-            this.coord = start;
-            this.toGen = new THashMap<>();
-            this.size = size;
+        NiterGen(World world, Random rand, BlockCoord start, int size) {
+            super(world, rand, start, size, false);
         }
 
         @Override
-        public Set<ChunkCoord> getChunksToGen() {
-            return this.toGen.keySet();
+        protected boolean canGen(BlockCoord c) {
+            return WorldGenDesert.this.canGenHere(this.world, c);
         }
 
         @Override
-        public boolean doGeneration(int chunkX, int chunkZ) {
-            ChunkCoord chunk = new ChunkCoord(chunkX, chunkZ);
-            if (!this.toGen.containsKey(chunk)) {
-                this.toGen.put(chunk, new ArrayList<BlockCoord>());
-            }
-            int genned = 0;
-            int threshold = this.size / 8;
-
-            while (genned < this.size) {
-                for (BlockCoord t : this.coord.getAdjacent()) {
-                    ChunkCoord c = new ChunkCoord(t);
-                    if (!this.toGen.containsKey(c)) {
-                        this.toGen.put(c, new ArrayList<BlockCoord>());
-                    }
-
-                    if (!chunk.contains(t) && !this.world.blockExists(t.x, t.y, t.z)) {
-                        // Suspended, not finished: keep whatever is still queued and retry next tick.
-                        return PendingChunks.hasWork(this.toGen);
-                    }
-
-                    if (WorldGenDesert.this.canGenHere(this.world, t) && !this.toGen.get(chunk)
-                        .contains(t)) {
-                        if (this.toGen.get(chunk) == null) {
-                            this.toGen.put(chunk, new ArrayList<BlockCoord>());
-                        }
-
-                        this.toGen.get(chunk)
-                            .add(t);
-                    }
-                }
-
-                if (this.toGen.get(chunk)
-                    .size() == 0) {
-                    break;
-                }
-
-                this.coord.set(
-                    this.toGen.get(chunk)
-                        .get(
-                            this.rand.nextInt(
-                                this.toGen.get(chunk)
-                                    .size())));
-                this.toGen.get(chunk)
-                    .remove(this.coord);
-                this.world.setBlock(
-                    this.coord.x,
-                    this.coord.y,
-                    this.coord.z,
-                    WorldGenDesert.this.block,
-                    WorldGenDesert.this.meta,
-                    0);
-                genned++;
-
-                while (this.toGen.get(chunk)
-                    .size() > threshold && genned < this.size
-                    && this.toGen.get(chunk)
-                        .size() != 0) {
-                    this.coord.set(
-                        this.toGen.get(chunk)
-                            .get(
-                                this.rand.nextInt(
-                                    this.toGen.get(chunk)
-                                        .size())));
-                    this.toGen.get(chunk)
-                        .remove(this.coord);
-                    this.world.setBlock(
-                        this.coord.x,
-                        this.coord.y,
-                        this.coord.z,
-                        WorldGenDesert.this.block,
-                        WorldGenDesert.this.meta,
-                        0);
-                    genned++;
-                }
-            }
-
-            return PendingChunks.hasWork(this.toGen);
+        protected void place(BlockCoord c) {
+            placePlain(c, WorldGenDesert.this.block, WorldGenDesert.this.meta);
         }
     }
 }

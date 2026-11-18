@@ -1,6 +1,5 @@
 package com.mrfuzzihead.artifice.world;
 
-import java.util.ArrayList;
 import java.util.Random;
 import java.util.Set;
 
@@ -12,16 +11,11 @@ import net.minecraftforge.common.BiomeDictionary.Type;
 
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
-import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.util.BlockCoord;
-import com.mrfuzzihead.artifice.util.ChunkCoord;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
-import com.mrfuzzihead.artifice.util.PendingChunks;
 
 import cofh.api.world.IFeatureGenerator;
-import gnu.trove.map.TMap;
-import gnu.trove.map.hash.THashMap;
 
 public class WorldGenCluster implements IFeatureGenerator {
 
@@ -123,133 +117,21 @@ public class WorldGenCluster implements IFeatureGenerator {
         return !b.isAir(world) && (this.replaced.contains(pair) || ArtificeBlocks.oreSet.contains(pair));
     }
 
-    private class ClusterGen implements ISuspendableGen {
+    /** clusters keep their budget in a local, so a suspended generator gets a fresh one when it resumes. */
+    private class ClusterGen extends BlobGen {
 
-        private World world;
-        private Random rand;
-        private BlockCoord coord;
-        private TMap<ChunkCoord, ArrayList<BlockCoord>> toGen;
-        private int size;
-
-        public ClusterGen(World world, Random rand, BlockCoord start, int size) {
-            this.world = world;
-            this.rand = rand;
-            this.coord = start;
-            this.toGen = new THashMap<>();
-            this.size = size;
+        ClusterGen(World world, Random rand, BlockCoord start, int size) {
+            super(world, rand, start, size, false);
         }
 
         @Override
-        public Set<ChunkCoord> getChunksToGen() {
-            return this.toGen.keySet();
+        protected boolean canGen(BlockCoord c) {
+            return WorldGenCluster.this.canGenHere(this.world, c);
         }
 
         @Override
-        public boolean doGeneration(int chunkX, int chunkZ) {
-            ChunkCoord chunk = new ChunkCoord(chunkX, chunkZ);
-            if (!this.toGen.containsKey(chunk)) {
-                this.toGen.put(chunk, new ArrayList<BlockCoord>());
-            }
-            int genned = 0;
-            int threshold = this.size / 8;
-
-            while (genned < this.size) {
-                for (BlockCoord t : this.coord.getAdjacent()) {
-                    ChunkCoord c = new ChunkCoord(t);
-                    if (!this.toGen.containsKey(c)) {
-                        this.toGen.put(c, new ArrayList<BlockCoord>());
-                    }
-
-                    if (!chunk.contains(t) && !this.world.blockExists(t.x, t.y, t.z)) {
-                        // Suspended, not finished: keep whatever is still queued and retry next tick.
-                        return PendingChunks.hasWork(this.toGen);
-                    }
-
-                    if (WorldGenCluster.this.canGenHere(this.world, t) && !this.toGen.get(chunk)
-                        .contains(t)) {
-                        if (this.toGen.get(chunk) == null) {
-                            this.toGen.put(chunk, new ArrayList<BlockCoord>());
-                        }
-
-                        this.toGen.get(chunk)
-                            .add(t);
-                    }
-                }
-
-                if (this.toGen.get(chunk)
-                    .size() == 0) {
-                    break;
-                }
-
-                this.coord.set(
-                    this.toGen.get(chunk)
-                        .get(
-                            this.rand.nextInt(
-                                this.toGen.get(chunk)
-                                    .size())));
-                this.toGen.get(chunk)
-                    .remove(this.coord);
-                NameMetaPair ore = new NameMetaPair(this.coord.getBlock(this.world), this.coord.getMeta(this.world));
-                if (WorldGenCluster.this.replaced.contains(ore)) {
-                    this.world.setBlock(
-                        this.coord.x,
-                        this.coord.y,
-                        this.coord.z,
-                        WorldGenCluster.this.block,
-                        WorldGenCluster.this.meta,
-                        0);
-                } else if (ArtificeBlocks.oreSet.contains(ore)) {
-                    NameMetaPair newOre = BlockOre.getOre(ore, WorldGenCluster.this.block);
-                    if (newOre != null) {
-                        this.world.setBlock(
-                            this.coord.x,
-                            this.coord.y,
-                            this.coord.z,
-                            newOre.getBlock(),
-                            newOre.getMetadata(),
-                            0);
-                    }
-                }
-
-                genned++;
-
-                for (; this.toGen.get(chunk)
-                    .size() > threshold && genned < this.size
-                    && this.toGen.get(chunk)
-                        .size() != 0; genned++) {
-                    this.coord.set(
-                        this.toGen.get(chunk)
-                            .get(
-                                this.rand.nextInt(
-                                    this.toGen.get(chunk)
-                                        .size())));
-                    this.toGen.get(chunk)
-                        .remove(this.coord);
-                    ore = new NameMetaPair(this.coord.getBlock(this.world), this.coord.getMeta(this.world));
-                    if (WorldGenCluster.this.replaced.contains(ore)) {
-                        this.world.setBlock(
-                            this.coord.x,
-                            this.coord.y,
-                            this.coord.z,
-                            WorldGenCluster.this.block,
-                            WorldGenCluster.this.meta,
-                            0);
-                    } else if (ArtificeBlocks.oreSet.contains(ore)) {
-                        NameMetaPair newOre = BlockOre.getOre(ore, WorldGenCluster.this.block);
-                        if (newOre != null) {
-                            this.world.setBlock(
-                                this.coord.x,
-                                this.coord.y,
-                                this.coord.z,
-                                newOre.getBlock(),
-                                newOre.getMetadata(),
-                                0);
-                        }
-                    }
-                }
-            }
-
-            return PendingChunks.hasWork(this.toGen);
+        protected void place(BlockCoord c) {
+            placeOreVariant(c, WorldGenCluster.this.replaced, WorldGenCluster.this.block, WorldGenCluster.this.meta);
         }
     }
 }
