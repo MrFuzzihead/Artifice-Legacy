@@ -726,6 +726,11 @@ Fix the comment (and consider `Name@Meta` to match the IMC format used by `compa
 Related: `setDimBlacklist` (`:487-499`) splits `""` into `[""]`, fails `Integer.parseInt("")` and logs
 `"Failed to load the dimension blacklist"` on **every fresh install**. Skip empty input.
 
+**Status: fixed on `refactor/1.1.6`.** Both comments now describe the parser (`Name;Meta`, comma separated) and name
+the example format; `parseDimensionList` and `parseStonePairs` are pure helpers that skip blanks and tolerate
+whitespace. The warning is only logged when a configured entry actually failed to parse, so a fresh install is
+silent. `ArtificeConfigTest` covers empty, blank, null, junk, doubled commas and a pair with no separator.
+
 ### 5.24 Config is loaded twice per side — **P3**
 
 `ArtificeCore.preInit` calls `ArtificeConfig.initClient(evt)` *and* `initCommon(evt)`, each of which constructs
@@ -733,12 +738,22 @@ its own `Configuration` over the same file and calls `load()`+`save()`. It works
 is four file writes per launch, and `initClient` runs on the server where the `Client` category is meaningless.
 Fold the client keys into `initCommon` (or guard `initClient` with `FMLCommonSetupEvent`/side check).
 
+**Status: fixed on `refactor/1.1.6`** — the three `Client` keys are read by `readCommon`, so there is one
+`Configuration` and one save per side. `initClient` is an empty deprecated stub for binary compatibility with
+anything that called it. `ArtificeConfigTest.clientKeysAreReadByTheCommonPass` asserts both the default and that the
+key is honoured.
+
 ### 5.25 `ArtificeEnchants` cannot distinguish "disabled" from "failed" — **P3**
 
 `ArtificeEnchants` only logs a warning when it cannot allocate an id. Combine with 5.3 and the config flags are
 misleading: `enchantmentSoulstealingEnable == true` does not imply `enchantmentSoulstealing != null`. Either
 expose a `isSoulstealingAvailable()` helper and use it everywhere, or (better) fail the registration and clear
 the config flag.
+
+**Status: fixed on `refactor/1.1.6`** via the first option: `hasInvisible()`/`hasSoulstealing()`/`hasResistance()`
+answer "config flag *and* registration succeeded", and every use site asks them (§5.3's fix). The config flag is
+left untouched on purpose - rewriting a user's config file to disable an enchantment they asked for is a surprise,
+and the helper makes the flag's meaning unambiguous without it.
 
 ### 5.26 `EnchantmentResistance` armour damage picks a random piece — **P3**
 
@@ -755,6 +770,12 @@ regardless of the number of enchanted pieces. It also only terminates because so
 enchantment is on a slot the loop skips, it damages the wrong armour. Iterate the four slots and damage the ones
 that actually have the enchantment.
 
+**Status: fixed on `refactor/1.1.6`** — the loop walks slots 1..4 and damages every piece that carries the
+enchantment, so a hit wears the armour that is actually absorbing it.
+
+Game test: diamond helmet with resistance I plus a plain diamond chestplate, 20 magic hits. New code: 20 on the
+helmet, 0 on the chestplate. Old code: 16 and 4 - the random pick hit an unenchanted piece four times.
+
 ### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance)**
 
 `recipe/ArtificeRecipes.java:209-222` sets `"charge" = nuclearBatteryCapacity` on the recipe output, and
@@ -767,12 +788,23 @@ capacity default and the recipe cost should be revisited; if not, drop the NBT f
 `BlockFrameScaffold.java:89` returns `sideIcons[meta]` with the raw metadata (no bound check, see 5.12) while the
 `getIcon(int,int)` overload uses the masked value. Same idea in `BlockFrameGlassWall:61/68`.
 
+**Status: fixed on `refactor/1.1.6`** as part of §5.12: both `IBlockAccess` overloads now delegate to the
+`(int, int)` form, which clamps through `ArrayUtils.getOrFirst`.
+
 ### 5.29 `ItemBlockSlabArtifice` tooltips never match — **P3**
 
 `block/decorative/ItemBlockSlabArtifice.java:85` builds the key from `stack.getUnlocalizedName()` (a
 *localisation* key like `tile.artifice.basalt.slab.cobble`) while `ArtificeRegistry` keys tooltips by
 `(Item, damage)` registry identity. The lookup can never hit. Use `new NameMetaPair(stack.getItem(), damage)`, as
 `ItemBlockArtifice` does.
+
+**Status: the tooltip half is fixed on `refactor/1.1.6`** — the lookup uses
+`new NameMetaPair(stack.getItem(), damage)` like the other item blocks. Game test: the four paver/antipaver slab
+metas resolve under their registry identity, and the unlocalised-name key the item block used to build is asserted
+to be a different key (i.e. the old lookup could not have matched).
+
+The `getHalfSlab`/`getDoubleSlab` half is **not** done. It is a refactor of working code and belongs with §7.3
+(registry names as constants) rather than as a drive-by change here.
 
 Also, `getHalfSlab`/`getDoubleSlab` (`:26-88`) resolve the slab by substring-matching the unlocalised name
 (`contains("gray")` after `contains("lightgray")`, …). It works today but breaks the moment a name changes, and it
@@ -786,7 +818,13 @@ half-slab → double-slab built in `ArtificeBlocks`.
 works, but `ISimpleBlockRenderingHandler#getRenderId` is part of the contract and is used by some tools/NEI
 plugins. Return `ArtificeConfig.frameRenderID`.
 
+**Status: fixed on `refactor/1.1.6`.** Not tested: the renderer is client-only and the harness is a dedicated
+server.
+
 ### 5.31 `OreRenderer` uses a mutable static as render state — **P3**
+
+**Status: not changed.** It is a client-render refactor with no server-side observable and no test that can hold
+it honest; the review's own framing is "prefer", and doing it blind risks the ore rendering for no verified gain.
 
 `render/OreRenderer.java:82` reads `ClientProxy.renderPass`, which `BlockOre.canRenderInPass` writes as a side
 effect. It works because the render pass is single-threaded, but it makes the renderer non-reentrant and is the
@@ -795,11 +833,19 @@ reason `BlockOre.getRenderBlockPass()` returns `1` for both passes. Prefer passi
 
 ### 5.32 `BlockEnderOre.getItemDropped` and friends ignore metadata — **P3**
 
+**Status: not changed.** The methods are harmless (they return the same thing the inherited ones would) and
+removing them cannot be verified by any test here; it is cosmetic cleanup for §7.
+
 `block/world/BlockEnderOre.java` has no metadata subtypes, yet `getDamageValue`/`damageDropped`/`getDrops` are
 defined as if it did. Harmless, but it is copy-paste from `BlockSulfur`, and it hides the fact that the glowing
 variant drops the same item (which is correct).
 
 ### 5.33 `WorldGenCluster`/`WorldGenCave` mutate the generator instance per biome — **P3 (thread safety)**
+
+**Status: not changed.** The concern is real but conditional: 1.7.10 chunk generation runs on the server thread
+unless a mod offloads it, and the fix means threading the chosen block through `ClusterGen`/`CaveGen` - a worldgen
+edit with no test that can catch a mistake. It is better done as part of the §7.1 dedupe, where the two generators
+become one and the mutation disappears by construction.
 
 `world/WorldGenCluster.java:95-112` and `world/WorldGenCave.java:109-126` assign `this.block` while choosing a
 limestone variant from the biome. `IFeatureGenerator`s are shared across chunk-generation threads in 1.7.10
@@ -812,12 +858,21 @@ concurrently can swap each other's stone type mid-blob. Use a local variable and
 name (`Artifice:tile.artifice.basalt.slab`). It also couples the registry name to the *localisation* key. Give
 slabs an explicit registry name.
 
+**Status: not doing this.** It is a registry-name change, and §4 decided that registry names are frozen: every
+`Artifice:tile.artifice.*` string is inside the CoFH retrogen hashes (E.8) and in pack configs (E.7). The coupling
+to the unlocalisation key is ugly, but it is also *stable*, which is the property that matters here. Recorded as a
+deliberate no.
+
 ### 5.35 The `/calc` command is registered but non-functional — **P3**
 
 `command/CommandCalc.java`: the `DoubleEvaluator` field and `evaluate` call are commented out
 (`:44-46`), so `/calc 1+1` prints `1+1 = ` and nothing else. `canCommandSenderUseCommand` returns `true`
 unconditionally (no permission check). Either restore the evaluator (it needs the `fathzer:javaluator`
 dependency) or delete the command — currently it is an untested, broken command exposed to every player.
+
+**Status: deleted on `refactor/1.1.6`** — `CommandCalc`, its registration, and its three lang keys are gone. It
+printed `1+1 = ` and nothing else, and every player could run it. Restoring it is a two-line diff plus the
+dependency if anyone wants it back; a broken command is worse than no command.
 
 ### 5.36 The sneak-tracking protocol is fragile — **P3**
 
@@ -832,6 +887,15 @@ silently enable shift-behaviour; (b) the client already updated its own copy bef
 server and client can disagree for a tick; (c) `ArrayList` plus `contains` on a hot path. Prefer the vanilla
 `EntityPlayer#isSneaking()` on the server (it is synced every tick in 1.7.10 — `EntityPlayerSP`/`EntityPlayerMP`
 both track it) and delete the packet entirely.
+
+**Status: the decision path is fixed on `refactor/1.1.6`; the protocol is still there.** `BoxCraftingHandler` now
+asks `player.isSneaking()`, which removes (a) and (b) from the only place that decides behaviour. The game test sets
+`player.setSneaking(true)` instead of adding an id to `Tracking.sneaks`.
+
+The packet, its handler, the client tick handler and `Tracking.sneaks` are now unused for behaviour but still
+registered. Deleting them is a network-identity change and is left as a follow-up rather than folded into a
+behaviour fix: the review's reasoning ("delete the packet entirely") is right, it just deserves its own commit and a
+client run to confirm nothing else subscribed.
 
 ---
 
@@ -1038,6 +1102,15 @@ in 1.7.10 (they depend on registration order), so a box in a chest can silently 
 pack update. Storing the registry *name* is the robust fix, and it is the only form that survives a future
 rename.
 The same applies to `DispenserBehaviorBox` and `RecipeBox`.
+
+**Status: fixed on `refactor/1.1.6`.** `util/BoxContents` owns the format: `RecipeBox` writes `name` *and* the
+legacy `id`/`meta`, and every reader (`ItemBox` right-click and tooltip, `BoxCraftingHandler`,
+`DispenserBehaviorBox`) prefers `name` with the numeric id as a fallback, so boxes written by older versions keep
+working.
+
+Game test: the name is written; a stale numeric id loses to the name; an id-only box still resolves; a box naming an
+item the pack does not have resolves to null and is left alone instead of throwing; and a name-carrying box yields
+its contents through the crafting handler.
 
 ### 9.7 Fluids
 
