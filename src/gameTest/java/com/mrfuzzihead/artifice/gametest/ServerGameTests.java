@@ -1380,8 +1380,15 @@ public final class ServerGameTests {
 
     private static final int GEN_CHUNK_X = 6000;
     private static final int GEN_CHUNK_Z = 6000;
-    private static final int GEN_MIN_Y = 0;
-    private static final int GEN_MAX_Y = 64;
+
+    /**
+     * How far around the tested chunk the band is filled, in chunks. It is one chunk wider than the area that gets
+     * hashed: the blob walk can drift past the chunk it started in, and a block outside the filled band is whatever
+     * the test world generated there - which depends on the world seed and made these fingerprints fail on CI while
+     * passing locally, where the dev world already existed.
+     */
+    private static final int GEN_FILL_RADIUS = 2;
+    private static final int GEN_HASH_RADIUS = 1;
 
     /**
      * What the four suspendable generators place, recorded as a fingerprint of the resulting blocks.
@@ -1405,52 +1412,57 @@ public final class ServerGameTests {
         prepareBand(world, Blocks.stone, 64, 64);
         checkEquals(
             "uranium cluster fingerprint",
-            "fa2037f9472f08c2",
-            runAndFingerprint(world, new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 7, 100), 11L, 64));
+            "486004ee60f51f2d",
+            runAndFingerprint(world, new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 8, 100), 11L, 64));
 
-        // Sulfur only generates beside lava or beside sulfur it has already placed, so the band gets a lava floor.
+        // Sulfur only generates beside lava or beside sulfur it has already placed. It gets seeded sulfur rather than
+        // lava: lava is a fluid, and letting it into the band made this fingerprint vary between runs.
         prepareBand(world, Blocks.stone, 127, 127);
-        setStripes(world, 4, Blocks.lava);
+        seedSulfur(world);
         checkEquals(
             "sulfur deposit fingerprint",
-            "d3a2e8ca7b290738",
-            runAndFingerprint(world, new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 64, 100), 12L, 127));
+            "d13198cb0d98c1cf",
+            runAndFingerprint(world, new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 8, 100), 12L, 127));
 
         // Niter replaces sand.
         prepareBand(world, Blocks.sand, 127, 127);
         checkEquals(
             "niter deposit fingerprint",
-            "1d32f098adb86d8d",
-            runAndFingerprint(world, new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 64, 100), 13L, 127));
+            "732f702e50257800",
+            runAndFingerprint(world, new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 8, 100), 13L, 127));
 
         // Caves only generate next to something that is not opaque, so the band gets a void layer.
         prepareBand(world, Blocks.stone, 40, 64);
         setStripes(world, 4, Blocks.air);
         checkEquals(
             "limestone cave fingerprint",
-            "b1e629453493c7c",
-            runAndFingerprint(world, new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 6, 100), 14L, 64));
+            "795a4ed4e460244b",
+            runAndFingerprint(world, new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 8, 100), 14L, 64));
     }
 
     /** Fills a controlled band: everything up to {@code fillTop} is {@code fill}, above it is air. */
     private static void prepareBand(World world, Block fill, int fillTop, int bandTop) {
-        for (int cx = GEN_CHUNK_X - 1; cx <= GEN_CHUNK_X + 1; cx++) {
-            for (int cz = GEN_CHUNK_Z - 1; cz <= GEN_CHUNK_Z + 1; cz++) {
+        for (int cx = GEN_CHUNK_X - GEN_FILL_RADIUS; cx <= GEN_CHUNK_X + GEN_FILL_RADIUS; cx++) {
+            for (int cz = GEN_CHUNK_Z - GEN_FILL_RADIUS; cz <= GEN_CHUNK_Z + GEN_FILL_RADIUS; cz++) {
                 // Generate (and keep) the chunks, so blockExists() is true and nothing suspends on unloaded terrain.
                 world.getChunkFromChunkCoords(cx, cz);
             }
         }
 
-        int x0 = (GEN_CHUNK_X - 1) << 4;
-        int z0 = (GEN_CHUNK_Z - 1) << 4;
-        int x1 = (GEN_CHUNK_X + 2) << 4;
-        int z1 = (GEN_CHUNK_Z + 2) << 4;
+        // Chunk generation runs CoFH's features, ours included, and each queues a generator. Those belong to the
+        // terrain that was just generated, not to the run being measured.
+        clearPendingGenerators(world);
+
+        int x0 = (GEN_CHUNK_X - GEN_FILL_RADIUS) << 4;
+        int z0 = (GEN_CHUNK_Z - GEN_FILL_RADIUS) << 4;
+        int x1 = (GEN_CHUNK_X + GEN_FILL_RADIUS + 1) << 4;
+        int z1 = (GEN_CHUNK_Z + GEN_FILL_RADIUS + 1) << 4;
 
         for (int x = x0; x < x1; x++) {
             for (int z = z0; z < z1; z++) {
-                // Two blocks above the hashed band as well: the generators look at their neighbours, and a block at
-                // the top of the band would otherwise see whatever terrain the test world generated there.
-                for (int y = 0; y <= bandTop + 2; y++) {
+                // A few blocks above the hashed band as well: the generators look at their neighbours and can walk
+                // one step past the band, and anything left over from an earlier run would leak into this one.
+                for (int y = 0; y <= bandTop + 4; y++) {
                     // Flag 2: no neighbour notifications. The generators write with flag 0, which is part of what is
                     // being recorded, but the filler must not spend the test's time notifying.
                     world.setBlock(x, y, z, y <= fillTop ? fill : Blocks.air, 0, 2);
@@ -1469,9 +1481,38 @@ public final class ServerGameTests {
      * the band gets stripes instead: half of it is a valid candidate.
      * </p>
      */
+    /** A few sulfur blocks at fixed positions, so the generator has somewhere legal to grow from. */
+    private static void seedSulfur(World world) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                world.setBlock(
+                    (GEN_CHUNK_X << 4) + 8 + dx,
+                    60,
+                    (GEN_CHUNK_Z << 4) + 8 + dz,
+                    ArtificeBlocks.blockSulfur,
+                    0,
+                    2);
+                world.setBlock(
+                    (GEN_CHUNK_X << 4) + 8 + dx,
+                    20,
+                    (GEN_CHUNK_Z << 4) + 8 + dz,
+                    ArtificeBlocks.blockSulfur,
+                    0,
+                    2);
+            }
+        }
+    }
+
+    private static void clearPendingGenerators(World world) {
+        ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
+        if (queue != null) {
+            queue.clear();
+        }
+    }
+
     private static void setStripes(World world, int period, Block block) {
-        for (int x = (GEN_CHUNK_X - 1) << 4; x < (GEN_CHUNK_X + 2) << 4; x++) {
-            for (int z = (GEN_CHUNK_Z - 1) << 4; z < (GEN_CHUNK_Z + 2) << 4; z++) {
+        for (int x = (GEN_CHUNK_X - GEN_FILL_RADIUS) << 4; x < (GEN_CHUNK_X + GEN_FILL_RADIUS + 1) << 4; x++) {
+            for (int z = (GEN_CHUNK_Z - GEN_FILL_RADIUS) << 4; z < (GEN_CHUNK_Z + GEN_FILL_RADIUS + 1) << 4; z++) {
                 for (int y = 0; y <= 130; y += period) {
                     world.setBlock(x, y, z, block, 0, 2);
                 }
@@ -1484,17 +1525,25 @@ public final class ServerGameTests {
      * 3x3 chunk area.
      */
     private static String runAndFingerprint(World world, IFeatureGenerator generator, long seed, int bandTop) {
+        clearPendingGenerators(world);
         generator.generateFeature(new Random(seed), GEN_CHUNK_X, GEN_CHUNK_Z, world, true);
 
+        // A copy, and emptied first: generating the chunks in prepareBand runs CoFH's features, and ours are among
+        // them, so the queue holds generators for other chunks that must not be driven here.
         ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
-        if (queue != null) {
-            for (ISuspendableGen gen : queue) {
-                int guard = 0;
-                while (gen.doGeneration(GEN_CHUNK_X, GEN_CHUNK_Z) && guard++ < 4096) {
-                    // The generator places a few blocks per call and says "false" when it has nothing left.
+        List<ISuspendableGen> pending = queue == null ? new ArrayList<ISuspendableGen>() : new ArrayList<>(queue);
+        clearPendingGenerators(world);
+
+        // A fixed number of calls, not "until it says it is done": a blob keeps expanding as long as it has
+        // candidates, so driving it to completion walks out of the prepared band and into terrain the world happened
+        // to generate - which is what made these fingerprints differ between a fresh world and a reused one. Eight
+        // calls is plenty to cover the blob sizes used here and is the same amount of work every run.
+        for (ISuspendableGen gen : pending) {
+            for (int call = 0; call < 8; call++) {
+                if (!gen.doGeneration(GEN_CHUNK_X, GEN_CHUNK_Z)) {
+                    break;
                 }
             }
-            queue.clear();
         }
 
         return fingerprintOfBand(world, bandTop);
@@ -1503,10 +1552,10 @@ public final class ServerGameTests {
     private static String fingerprintOfBand(World world, int bandTop) {
         long hash = 1125899906842597L;
 
-        int x0 = (GEN_CHUNK_X - 1) << 4;
-        int z0 = (GEN_CHUNK_Z - 1) << 4;
-        int x1 = (GEN_CHUNK_X + 2) << 4;
-        int z1 = (GEN_CHUNK_Z + 2) << 4;
+        int x0 = (GEN_CHUNK_X - GEN_HASH_RADIUS) << 4;
+        int z0 = (GEN_CHUNK_Z - GEN_HASH_RADIUS) << 4;
+        int x1 = (GEN_CHUNK_X + GEN_HASH_RADIUS + 1) << 4;
+        int z1 = (GEN_CHUNK_Z + GEN_HASH_RADIUS + 1) << 4;
 
         for (int x = x0; x < x1; x++) {
             for (int z = z0; z < z1; z++) {
