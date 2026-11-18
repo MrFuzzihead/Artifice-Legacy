@@ -823,12 +823,15 @@ enchantment, so a hit wears the armour that is actually absorbing it.
 Game test: diamond helmet with resistance I plus a plain diamond chestplate, 20 magic hits. New code: 20 on the
 helmet, 0 on the chestplate. Old code: 16 and 4 - the random pick hit an unenchanted piece four times.
 
-### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance)**
+### 5.27 The nuclear battery recipe ships a full battery — **P3 (balance), open**
 
 `recipe/ArtificeRecipes.java:209-222` sets `"charge" = nuclearBatteryCapacity` on the recipe output, and
 `BlockNuclearBattery.onBlockPlacedBy` adopts it. So one craft = 1,000,000,000 RF from nothing (there is no way to
 recharge, so this is the *only* source). If that is intended as "a battery comes pre-charged", fine, but then the
 capacity default and the recipe cost should be revisited; if not, drop the NBT from the recipe output.
+
+**Status: open, waiting on a decision.** The recipe still stamps the full capacity. Whichever way it goes, the in-game
+battery test already reads the crafted stack's NBT, so the change is two lines with a test in place.
 
 ### 5.28 `BlockFrameGlassWall` / `BlockFrameScaffold` `getIcon(IBlockAccess)` mismatch — **P3**
 
@@ -997,7 +1000,7 @@ pins the property and fails on the rotation.
 
 ## 7. Refactors
 
-### 7.1 One blob generator instead of four (≈700 lines removed)
+### 7.1 One blob generator instead of four (≈700 lines removed) — **open**
 
 `WorldGenCluster.ClusterGen` (`:139-215`), `WorldGenSulfur.SulfurGen` (`:145-230`) and
 `WorldGenDesert.NiterGen` (`:140-225`) are near-identical: same `TMap<ChunkCoord, ArrayList<BlockCoord>>`, same
@@ -1067,20 +1070,20 @@ produced 16 - and the "intended" 15.5 does not apply to it either, because `1500
 half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
 "Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
 
-### 7.3 Registry names as constants
+### 7.3 Registry names as constants — **open**
 
 Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
 Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
 `setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
 for the first time.
 
-### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method
+### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method — **open**
 
 Split into `initRocks`, `initOres`, `initFrames`, `initDecorative`, `initFluids`, `initFunctional`, each with a
 static field group. The current method constructs ~120 blocks and registers ~40 of them in one go, which makes the
 registration order (and therefore the block/item name coupling) very hard to reason about.
 
-### 7.5 The tooltip registry is 226 registration calls
+### 7.5 The tooltip registry is 226 registration calls — **open**
 
 `ArtificeTooltips` (752 lines) is a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)`. A
 `registerTooltips(Block/Item, String... lines)` helper keyed by the same metadata tables would shrink it by
@@ -1157,6 +1160,10 @@ concrete risks: (a) a pack that counts ores (vein miner, ore-finder tools) sees 
 cascade with CoFH's retrogen. Strongly consider a config flag (`convertOtherModOres`, default on) and a per-ore
 log at debug level.
 
+**Status: open, waiting on a decision.** `initOreSet` still collects every mod's stacks for each `oreNames` entry, and
+`WorldGenLayer`/`WorldGenCluster` still replace them. It is the one remaining item that changes what the world
+generator does to another mod's terrain, which is why it is a decision and not a patch.
+
 ### 9.2 Ore smelting recipes never register — **fixed**
 
 `ArtificeRecipes.registerOreRecipes` (`:842`) runs in `init`, but the ore-dictionary entries for `blockOres` only
@@ -1179,17 +1186,23 @@ recipe from a different code path, which is why the miss was easy to overlook.
 `BlockRock.getIcon` clamps at 6), so a block placed with corrupt metadata 7 has hardness 12. Harmless, but a
 hardness table indexed by tier would be clearer.
 
+**Status: open (cosmetic).** Nothing pins hardness at all (§10.3), so a table should arrive with its own assertions.
+
 ### 9.4 `BlockFrameBlastWall` hardness double-dips
 
 `BlockFrameBlastWall.getBlockHardness` (`:80`) returns `super.getBlockHardness(...) + 5`, and the superclass
 already returns `meta + 5` → `meta + 10`. Probably intentional (blast walls should be harder) but it is invisible
 in the config; document it or move it into the tier table.
 
+**Status: open (cosmetic).** Unchanged: `super.getBlockHardness(...) + 5.0F`.
+
 ### 9.5 `BlockFlora` and `BlockLotus` day/night logic uses `getWorldTime()`
 
 `WorldGenFlowers` writes the open/closed lotus metadata based on `world.getWorldTime() > 12000L`, and
 `BlockLotus.updateTick` flips it on light level. On a world with a fixed time (e.g. a "permanent day" dimension)
 the generation state is arbitrary. Cosmetic.
+
+**Status: open (cosmetic).** `WorldGenFlowers` still branches on `world.getWorldTime() > 12000L`.
 
 ### 9.6 `ItemBox` stores numeric item ids
 
