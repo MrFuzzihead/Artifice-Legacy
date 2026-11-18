@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 import net.minecraft.block.Block;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.item.crafting.IRecipe;
@@ -160,6 +161,49 @@ public abstract class ArtificeRegistry {
         } else {
             tooltipMap.get(pair)
                 .add(line);
+        }
+    }
+
+    /**
+     * Appends the tooltip lines registered for a stack, honouring the two tooltip config switches.
+     *
+     * <p>
+     * Five item classes had their own copy of this loop, and they had drifted: four honoured
+     * {@code ArtificeConfig.flavorText} and the box did not (CODE_REVIEW §7.5). One implementation, with the box's
+     * choice passed in explicitly.
+     * </p>
+     */
+    public static void appendTooltips(ItemStack stack, List<String> infoList) {
+        appendTooltips(stack, infoList, ArtificeConfig.flavorText);
+    }
+
+    /** @param allowFlavour whether the italic "flavour" lines are shown at all */
+    public static void appendTooltips(ItemStack stack, List<String> infoList, boolean allowFlavour) {
+        if (!ArtificeConfig.tooltips) {
+            return;
+        }
+        appendLines(tooltipMap.get(new NameMetaPair(stack.getItem(), stack.getItemDamage())), infoList, allowFlavour);
+    }
+
+    /**
+     * For items with a single metadata value (tools, boxes, buckets): matches whatever damage the stack carries,
+     * which is what the sledge and sickle were approximating by looking up damage 0.
+     */
+    public static void appendTooltips(Item item, List<String> infoList) {
+        if (!ArtificeConfig.tooltips) {
+            return;
+        }
+        appendLines(tooltipMap.get(new NameMetaPair(item)), infoList, ArtificeConfig.flavorText);
+    }
+
+    private static void appendLines(List<String> lines, List<String> infoList, boolean allowFlavour) {
+        if (lines == null) {
+            return;
+        }
+        for (String line : lines) {
+            if (allowFlavour || !line.startsWith(ArtificeTooltips.commentCode)) {
+                infoList.add(line);
+            }
         }
     }
 

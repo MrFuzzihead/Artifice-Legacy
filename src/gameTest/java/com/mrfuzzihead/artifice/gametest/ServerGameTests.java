@@ -36,6 +36,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrame;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
@@ -1947,6 +1948,37 @@ public final class ServerGameTests {
             "the sulfur dust has a tooltip",
             ArtificeRegistry.getTooltipMap()
                 .containsKey(new com.mrfuzzihead.artifice.util.NameMetaPair(ArtificeItems.itemResource, 0)));
+
+        // §7.5 collapsed 226 registration calls into 116 per-stack calls. What must not change is the lines and
+        // their order, so pin the shape of two stacks that have several: a dye (name + flavour) and a sledge
+        // (name, loss chance, flavour).
+        List<String> dye = ArtificeRegistry.getTooltipMap()
+            .get(new NameMetaPair(ArtificeItems.itemDye, 0));
+        check("the blue dye has two lines", dye != null && dye.size() == 2);
+        if (dye != null && dye.size() == 2) {
+            check(
+                "the dye's name line comes first",
+                dye.get(0)
+                    .equals(ArtificeTooltips.localizeTooltip("dye.blue", false)));
+            check(
+                "the dye's flavour line comes second",
+                dye.get(1)
+                    .equals(ArtificeTooltips.localizeTooltip("dye.blue", true)));
+            check(
+                "the flavour line is marked as such",
+                dye.get(1)
+                    .startsWith(ArtificeTooltips.commentCode));
+        }
+
+        List<String> sledge = ArtificeRegistry.getTooltipMap()
+            .get(new NameMetaPair(ArtificeItems.itemSledgeWood, 0));
+        check("the wooden sledge has three lines", sledge != null && sledge.size() == 3);
+        if (sledge != null && sledge.size() == 3) {
+            check(
+                "the sledge's loss line is in the middle",
+                sledge.get(1)
+                    .contains(ArtificeTooltips.localizeTooltip("sledge.loss", false)));
+        }
     }
 
     private static void checkConfigSurface() {

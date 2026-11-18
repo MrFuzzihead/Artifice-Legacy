@@ -27,9 +27,7 @@ import net.minecraftforge.oredict.ShapedOreRecipe;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
-import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.render.TextureHandler;
-import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -87,16 +85,9 @@ public class ItemSledge extends ItemTool {
     @SideOnly(Side.CLIENT)
     public void addInformation(ItemStack stack, EntityPlayer player, List infoList, boolean advancedTooltips) {
         if (ArtificeConfig.tooltips) {
-            NameMetaPair pair = new NameMetaPair(stack.getItem(), 0);
-            if (ArtificeRegistry.getTooltipMap()
-                .get(pair) != null) {
-                for (String s : ArtificeRegistry.getTooltipMap()
-                    .get(pair)) {
-                    if (ArtificeConfig.flavorText || !s.startsWith(ArtificeTooltips.commentCode)) {
-                        infoList.add(s);
-                    }
-                }
-            }
+            // Tools carry one metadata value, so the lookup matches whatever damage the stack has rather than
+            // assuming 0 (CODE_REVIEW §7.5).
+            ArtificeRegistry.appendTooltips(stack.getItem(), infoList);
         }
     }
 

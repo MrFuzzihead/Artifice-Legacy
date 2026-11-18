@@ -178,16 +178,8 @@ public class ItemBox extends ItemArtifice {
     @Override
     public void addInformation(ItemStack stack, EntityPlayer player, List infoList, boolean advancedTooltips) {
         if (ArtificeConfig.tooltips) {
-            NameMetaPair pair = new NameMetaPair(stack.getItem(), 0);
-            if (ArtificeRegistry.getTooltipMap()
-                .get(pair) != null) {
-                for (String s : ArtificeRegistry.getTooltipMap()
-                    .get(pair)) {
-                    if (!s.startsWith(ArtificeTooltips.commentCode)) {
-                        infoList.add(s);
-                    }
-                }
-            }
+            // The box has never shown flavour text, whatever the config says.
+            ArtificeRegistry.appendTooltips(stack, infoList, false);
         }
 
         NBTTagCompound tag = stack.getTagCompound();

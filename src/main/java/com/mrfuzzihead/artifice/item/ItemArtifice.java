@@ -11,8 +11,6 @@ import net.minecraft.util.IIcon;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
-import com.mrfuzzihead.artifice.ArtificeTooltips;
-import com.mrfuzzihead.artifice.util.NameMetaPair;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -33,16 +31,7 @@ public abstract class ItemArtifice extends Item {
     @SideOnly(Side.CLIENT)
     public void addInformation(ItemStack stack, EntityPlayer player, List infoList, boolean advancedTooltips) {
         if (ArtificeConfig.tooltips) {
-            NameMetaPair pair = new NameMetaPair(stack.getItem(), stack.getItemDamage());
-            if (ArtificeRegistry.getTooltipMap()
-                .get(pair) != null) {
-                for (String s : ArtificeRegistry.getTooltipMap()
-                    .get(pair)) {
-                    if (ArtificeConfig.flavorText || !s.startsWith(ArtificeTooltips.commentCode)) {
-                        infoList.add(s);
-                    }
-                }
-            }
+            ArtificeRegistry.appendTooltips(stack, infoList);
         }
     }
 }
