@@ -218,6 +218,34 @@ public class MiscUtilsTest {
     }
 
     @Test
+    public void getHeatReceiverNeighborIsFairBetweenTwoAdjacentReceivers() {
+        // The heating coil hands its whole tick's heat to whichever receiver this returns, so "which side wins" has
+        // to be uniform. A rotation of a fixed side order would not be: with candidates on sides 0 and 1, a rotation
+        // from a uniform start visits side 0 first in 5 of 6 cases, and a coil between two furnaces would feed one of
+        // them five times out of six (CODE_REVIEW §6).
+        StubHeatReceiver onX = new StubHeatReceiver();
+        StubHeatReceiver onY = new StubHeatReceiver();
+
+        World world = Mockito.mock(World.class);
+        Mockito.when(world.getTileEntity(1, 0, 0))
+            .thenReturn(onX);
+        Mockito.when(world.getTileEntity(0, 1, 0))
+            .thenReturn(onY);
+
+        int runs = 6000;
+        int first = 0;
+        for (int run = 0; run < runs; run++) {
+            if (MiscUtils.getHeatReceiverNeighbor(world, 0, 0, 0) == onX) {
+                first++;
+            }
+        }
+
+        // 6000 draws at p=1/2 has a standard deviation of 39, so anything outside 2700..3300 is a broken order, not
+        // bad luck.
+        Assert.assertTrue("side 0 was picked " + first + " of " + runs + " times", first > 2700 && first < 3300);
+    }
+
+    @Test
     public void getHeatReceiverNeighborReturnsNullWhenNothingIsAdjacent() {
         World world = Mockito.mock(World.class);
         Assert.assertNull(MiscUtils.getHeatReceiverNeighbor(world, 0, 0, 0));
