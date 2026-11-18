@@ -1,7 +1,5 @@
 package com.mrfuzzihead.artifice.block.decorative;
 
-import java.util.Locale;
-
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockStairs;
 import net.minecraft.world.IBlockAccess;
@@ -9,6 +7,7 @@ import net.minecraft.world.IBlockAccess;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,9 +21,7 @@ public class BlockStairsArtifice extends BlockStairs {
         super(block, meta);
         this.setLightOpacity(0);
         this.setCreativeTab(ArtificeCore.worldTab);
-        String name = block.getUnlocalizedName() + ".stairs." + ArtificeConfig.rocks[meta].toLowerCase(Locale.ENGLISH);
-        name = name.replace("tile.", "");
-        this.setBlockName(name);
+        this.setBlockName(Names.stairs(block, ArtificeConfig.rocks[meta]));
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }
 

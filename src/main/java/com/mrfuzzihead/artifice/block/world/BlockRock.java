@@ -18,6 +18,7 @@ import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.BlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -33,7 +34,7 @@ public class BlockRock extends BlockArtifice {
         super(Material.rock);
         this.setHardness(1.5F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice." + name);
+        this.setBlockName(Names.rock(name));
         this.setCreativeTab(ArtificeCore.worldTab);
         this.name = name;
         GameRegistry.registerBlock(this, ItemBlockRock.class, this.getUnlocalizedName());
@@ -43,7 +44,7 @@ public class BlockRock extends BlockArtifice {
         super(Material.rock);
         this.setHardness(1.5F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice." + name);
+        this.setBlockName(Names.rock(name));
         this.setCreativeTab(ArtificeCore.worldTab);
         this.name = name.split("[.]")[0];
         this.color = color;

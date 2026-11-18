@@ -1,7 +1,5 @@
 package com.mrfuzzihead.artifice.block.fluid;
 
-import java.util.Locale;
-
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
 import net.minecraft.entity.Entity;
@@ -15,6 +13,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeFluids;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cofh.core.fluid.BlockFluidCoFHBase;
 import cofh.lib.util.helpers.ServerHelper;
@@ -23,7 +22,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
 public class BlockFluidOil extends BlockFluidCoFHBase {
 
     public BlockFluidOil() {
-        super("Artifice".toLowerCase(Locale.ENGLISH), ArtificeFluids.fluidOil, Material.water, "oil");
+        super(Names.FLUID_NAMESPACE, ArtificeFluids.fluidOil, Material.water, "oil");
         this.setCreativeTab(ArtificeCore.worldTab);
         this.setQuantaPerBlock(6);
         this.setTickRate(30);

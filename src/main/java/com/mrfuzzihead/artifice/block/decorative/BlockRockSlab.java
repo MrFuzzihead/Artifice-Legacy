@@ -17,6 +17,7 @@ import net.minecraft.world.World;
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -36,7 +37,7 @@ public class BlockRockSlab extends BlockSlab {
         this.setLightOpacity(0);
         this.setHardness(1.5F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice." + name + (isDouble ? ".doubleslab" : ".slab"));
+        this.setBlockName(Names.slab(name, isDouble));
         this.name = name;
         this.isDouble = isDouble;
     }

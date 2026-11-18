@@ -55,6 +55,10 @@ tasks.withType<Test>().configureEach {
             languageVersion.set(JavaLanguageVersion.of(8))
         }
     )
+    // The suite runs on Java 8's default heap, which is not enough for the scaffold equivalence test: it drives the
+    // algorithm the refactor replaced (a (2r+1)^3 cube scan plus a flood fill per candidate) over thousands of random
+    // configurations, and that algorithm allocates a BlockCoord per block it looks at.
+    maxHeapSize = "1536m"
     testLogging {
         events("failed", "skipped")
         exceptionFormat = TestExceptionFormat.FULL

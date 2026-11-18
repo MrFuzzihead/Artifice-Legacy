@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -21,7 +22,7 @@ public class ItemResource extends ItemArtifice {
 
     public ItemResource() {
         this.setCreativeTab(ArtificeCore.worldTab);
-        this.setUnlocalizedName("artifice.resource");
+        this.setUnlocalizedName(Names.RESOURCE);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

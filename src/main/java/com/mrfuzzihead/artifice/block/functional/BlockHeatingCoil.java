@@ -15,6 +15,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -30,7 +31,7 @@ public class BlockHeatingCoil extends Block implements ITileEntityProvider {
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setHardness(5.0F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice.heatingcoil");
+        this.setBlockName(Names.HEATING_COIL);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }
 

@@ -27,6 +27,7 @@ import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.MiscUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -41,7 +42,7 @@ public class BlockNuclearBattery extends Block implements ITileEntityProvider {
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setHardness(5.0F);
         this.setResistance(10.0F);
-        this.setBlockName("artifice.nuclearbattery");
+        this.setBlockName(Names.NUCLEAR_BATTERY);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }
 

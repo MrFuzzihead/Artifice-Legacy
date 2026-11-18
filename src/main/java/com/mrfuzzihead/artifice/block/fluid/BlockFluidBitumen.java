@@ -1,7 +1,5 @@
 package com.mrfuzzihead.artifice.block.fluid;
 
-import java.util.Locale;
-
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
 import net.minecraft.entity.Entity;
@@ -15,6 +13,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeFluids;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cofh.core.fluid.BlockFluidCoFHBase;
 import cofh.lib.util.helpers.ServerHelper;
@@ -23,7 +22,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
 public class BlockFluidBitumen extends BlockFluidCoFHBase {
 
     public BlockFluidBitumen() {
-        super("Artifice".toLowerCase(Locale.ENGLISH), ArtificeFluids.fluidBitumen, Material.water, "bitumen");
+        super(Names.FLUID_NAMESPACE, ArtificeFluids.fluidBitumen, Material.water, "bitumen");
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setQuantaPerBlock(2);
         this.setTickRate(50);

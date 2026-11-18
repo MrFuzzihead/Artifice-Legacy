@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -22,7 +23,7 @@ public class ItemDye extends ItemArtifice {
     private String[] names = new String[] { "Blue", "Black", "Brown", "White" };
 
     public ItemDye() {
-        this.setUnlocalizedName("artifice.dye");
+        this.setUnlocalizedName(Names.DYE);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

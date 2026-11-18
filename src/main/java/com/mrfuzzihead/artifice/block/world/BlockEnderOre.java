@@ -23,6 +23,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -40,9 +41,9 @@ public class BlockEnderOre extends Block {
         this.setResistance(5.0F);
         this.setCreativeTab(ArtificeCore.worldTab);
         if (glowing) {
-            this.setBlockName("artifice.enderore.glowing");
+            this.setBlockName(Names.ENDER_ORE_GLOWING);
         } else {
-            this.setBlockName("artifice.enderore");
+            this.setBlockName(Names.ENDER_ORE);
         }
 
         this.setHarvestLevel("pickaxe", 2);

@@ -1,9 +1,11 @@
 package com.mrfuzzihead.artifice.gametest;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -36,6 +38,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
 import com.mrfuzzihead.artifice.block.frame.BlockFrame;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
@@ -43,6 +46,7 @@ import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.block.world.BlockRock;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
+import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
@@ -60,8 +64,14 @@ import com.mrfuzzihead.artifice.util.ComparableItemStack;
 import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
+import com.mrfuzzihead.artifice.world.ISuspendableGen;
+import com.mrfuzzihead.artifice.world.WorldGenCave;
+import com.mrfuzzihead.artifice.world.WorldGenCluster;
+import com.mrfuzzihead.artifice.world.WorldGenDesert;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
+import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
+import cofh.api.world.IFeatureGenerator;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 
 /**
@@ -106,6 +116,7 @@ public final class ServerGameTests {
         run("lamp stability", ServerGameTests::checkLampStability);
         run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("ore layer generation", ServerGameTests::checkLayerGeneration);
+        run("worldgen fingerprints", ServerGameTests::checkWorldGenFingerprints);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -916,6 +927,21 @@ public final class ServerGameTests {
                 "an unanchored scaffold of another tier does not cancel an anchored neighbour",
                 ArtificeBlocks.blockScaffold.canBlockStay(world, cx, cy, cz));
 
+            // The overhang is the tier radius, on a real world and real blocks: a tier-0 chain reaches four blocks
+            // from its anchor and no further (CODE_REVIEW §6).
+            int bx = site.x + 6;
+            int bz = site.z;
+            site.setBlock(bx, cy - 1, bz, Blocks.stone, 0);
+            for (int i = 0; i <= 5; i++) {
+                site.setBlock(bx + i, cy, bz, ArtificeBlocks.blockScaffold, 0);
+            }
+            for (int i = 0; i <= 5; i++) {
+                checkEquals(
+                    "a tier-0 chain " + i + " blocks from its anchor",
+                    i <= 4,
+                    ArtificeBlocks.blockScaffold.canBlockStay(world, bx + i, cy, bz));
+            }
+
             // Remove the anchor's ground: now nothing within reach is anchored and the block must go.
             world.setBlockToAir(cx, cy - 1, cz + 1);
             check(
@@ -1346,6 +1372,204 @@ public final class ServerGameTests {
             "the layer leaves blocks that are not stone types alone",
             Blocks.dirt,
             world.getBlock(x0 + 9, y, z0));
+    }
+
+    // ---------------------------------------------------------------------------------------------------------
+    // Worldgen determinism: the safety net for the §7.1 refactor
+    // ---------------------------------------------------------------------------------------------------------
+
+    private static final int GEN_CHUNK_X = 6000;
+    private static final int GEN_CHUNK_Z = 6000;
+
+    /**
+     * How far around the tested chunk the band is filled, in chunks. It is one chunk wider than the area that gets
+     * hashed: the blob walk can drift past the chunk it started in, and a block outside the filled band is whatever
+     * the test world generated there - which depends on the world seed and made these fingerprints fail on CI while
+     * passing locally, where the dev world already existed.
+     */
+    private static final int GEN_FILL_RADIUS = 2;
+    private static final int GEN_HASH_RADIUS = 1;
+
+    /**
+     * What the four suspendable generators place, recorded as a fingerprint of the resulting blocks.
+     *
+     * <p>
+     * §7.1 merges four near-identical generators into one, which is a refactor of worldgen with no observable contract
+     * to test against: the output is "some blobs". So the contract is made here - for a fixed seed, a fixed band of
+     * stone and a fixed chunk, the placed blocks must not change. The band is filled first so the outcome depends on
+     * the seed and not on whatever terrain the test world happens to have generated.
+     * </p>
+     *
+     * <p>
+     * If a fingerprint changes deliberately, record the new value here and say why in the commit; if it changes
+     * without a reason, the refactor broke worldgen.
+     * </p>
+     */
+    private static void checkWorldGenFingerprints() {
+        World world = overworld();
+
+        // Uranium clusters replace stone anywhere in their band.
+        prepareBand(world, Blocks.stone, 64, 64);
+        checkEquals(
+            "uranium cluster fingerprint",
+            "486004ee60f51f2d",
+            runAndFingerprint(world, new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 8, 100), 11L, 64));
+
+        // Sulfur only generates beside lava or beside sulfur it has already placed. It gets seeded sulfur rather than
+        // lava: lava is a fluid, and letting it into the band made this fingerprint vary between runs.
+        prepareBand(world, Blocks.stone, 127, 127);
+        seedSulfur(world);
+        checkEquals(
+            "sulfur deposit fingerprint",
+            "d13198cb0d98c1cf",
+            runAndFingerprint(world, new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 8, 100), 12L, 127));
+
+        // Niter replaces sand.
+        prepareBand(world, Blocks.sand, 127, 127);
+        checkEquals(
+            "niter deposit fingerprint",
+            "732f702e50257800",
+            runAndFingerprint(world, new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 8, 100), 13L, 127));
+
+        // Caves only generate next to something that is not opaque, so the band gets a void layer.
+        prepareBand(world, Blocks.stone, 40, 64);
+        setStripes(world, 4, Blocks.air);
+        checkEquals(
+            "limestone cave fingerprint",
+            "795a4ed4e460244b",
+            runAndFingerprint(world, new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 8, 100), 14L, 64));
+    }
+
+    /** Fills a controlled band: everything up to {@code fillTop} is {@code fill}, above it is air. */
+    private static void prepareBand(World world, Block fill, int fillTop, int bandTop) {
+        for (int cx = GEN_CHUNK_X - GEN_FILL_RADIUS; cx <= GEN_CHUNK_X + GEN_FILL_RADIUS; cx++) {
+            for (int cz = GEN_CHUNK_Z - GEN_FILL_RADIUS; cz <= GEN_CHUNK_Z + GEN_FILL_RADIUS; cz++) {
+                // Generate (and keep) the chunks, so blockExists() is true and nothing suspends on unloaded terrain.
+                world.getChunkFromChunkCoords(cx, cz);
+            }
+        }
+
+        // Chunk generation runs CoFH's features, ours included, and each queues a generator. Those belong to the
+        // terrain that was just generated, not to the run being measured.
+        clearPendingGenerators(world);
+
+        int x0 = (GEN_CHUNK_X - GEN_FILL_RADIUS) << 4;
+        int z0 = (GEN_CHUNK_Z - GEN_FILL_RADIUS) << 4;
+        int x1 = (GEN_CHUNK_X + GEN_FILL_RADIUS + 1) << 4;
+        int z1 = (GEN_CHUNK_Z + GEN_FILL_RADIUS + 1) << 4;
+
+        for (int x = x0; x < x1; x++) {
+            for (int z = z0; z < z1; z++) {
+                // A few blocks above the hashed band as well: the generators look at their neighbours and can walk
+                // one step past the band, and anything left over from an earlier run would leak into this one.
+                for (int y = 0; y <= bandTop + 4; y++) {
+                    // Flag 2: no neighbour notifications. The generators write with flag 0, which is part of what is
+                    // being recorded, but the filler must not spend the test's time notifying.
+                    world.setBlock(x, y, z, y <= fillTop ? fill : Blocks.air, 0, 2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Replaces every {@code period}-th layer with {@code block}.
+     *
+     * <p>
+     * The sulfur and cave generators both pick a random y and then look for a block with a particular neighbour (lava
+     * for sulfur, anything non-opaque for a cave), giving up after a handful of tries if they do not find one. One
+     * lava layer in a 128-block band makes that a coin flip on the seed rather than a property of the generator, so
+     * the band gets stripes instead: half of it is a valid candidate.
+     * </p>
+     */
+    /** A few sulfur blocks at fixed positions, so the generator has somewhere legal to grow from. */
+    private static void seedSulfur(World world) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                world.setBlock(
+                    (GEN_CHUNK_X << 4) + 8 + dx,
+                    60,
+                    (GEN_CHUNK_Z << 4) + 8 + dz,
+                    ArtificeBlocks.blockSulfur,
+                    0,
+                    2);
+                world.setBlock(
+                    (GEN_CHUNK_X << 4) + 8 + dx,
+                    20,
+                    (GEN_CHUNK_Z << 4) + 8 + dz,
+                    ArtificeBlocks.blockSulfur,
+                    0,
+                    2);
+            }
+        }
+    }
+
+    private static void clearPendingGenerators(World world) {
+        ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
+        if (queue != null) {
+            queue.clear();
+        }
+    }
+
+    private static void setStripes(World world, int period, Block block) {
+        for (int x = (GEN_CHUNK_X - GEN_FILL_RADIUS) << 4; x < (GEN_CHUNK_X + GEN_FILL_RADIUS + 1) << 4; x++) {
+            for (int z = (GEN_CHUNK_Z - GEN_FILL_RADIUS) << 4; z < (GEN_CHUNK_Z + GEN_FILL_RADIUS + 1) << 4; z++) {
+                for (int y = 0; y <= 130; y += period) {
+                    world.setBlock(x, y, z, block, 0, 2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs one generator over the prepared band with a fixed seed, drains the suspendable queue, and hashes the
+     * 3x3 chunk area.
+     */
+    private static String runAndFingerprint(World world, IFeatureGenerator generator, long seed, int bandTop) {
+        clearPendingGenerators(world);
+        generator.generateFeature(new Random(seed), GEN_CHUNK_X, GEN_CHUNK_Z, world, true);
+
+        // A copy, and emptied first: generating the chunks in prepareBand runs CoFH's features, and ours are among
+        // them, so the queue holds generators for other chunks that must not be driven here.
+        ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
+        List<ISuspendableGen> pending = queue == null ? new ArrayList<ISuspendableGen>() : new ArrayList<>(queue);
+        clearPendingGenerators(world);
+
+        // A fixed number of calls, not "until it says it is done": a blob keeps expanding as long as it has
+        // candidates, so driving it to completion walks out of the prepared band and into terrain the world happened
+        // to generate - which is what made these fingerprints differ between a fresh world and a reused one. Eight
+        // calls is plenty to cover the blob sizes used here and is the same amount of work every run.
+        for (ISuspendableGen gen : pending) {
+            for (int call = 0; call < 8; call++) {
+                if (!gen.doGeneration(GEN_CHUNK_X, GEN_CHUNK_Z)) {
+                    break;
+                }
+            }
+        }
+
+        return fingerprintOfBand(world, bandTop);
+    }
+
+    private static String fingerprintOfBand(World world, int bandTop) {
+        long hash = 1125899906842597L;
+
+        int x0 = (GEN_CHUNK_X - GEN_HASH_RADIUS) << 4;
+        int z0 = (GEN_CHUNK_Z - GEN_HASH_RADIUS) << 4;
+        int x1 = (GEN_CHUNK_X + GEN_HASH_RADIUS + 1) << 4;
+        int z1 = (GEN_CHUNK_Z + GEN_HASH_RADIUS + 1) << 4;
+
+        for (int x = x0; x < x1; x++) {
+            for (int z = z0; z < z1; z++) {
+                for (int y = 0; y <= bandTop; y++) {
+                    Block block = world.getBlock(x, y, z);
+                    int meta = world.getBlockMetadata(x, y, z);
+                    String name = Block.blockRegistry.getNameForObject(block);
+                    hash = 31 * hash + (name == null ? 0 : name.hashCode());
+                    hash = 31 * hash + meta;
+                }
+            }
+        }
+
+        return Long.toHexString(hash);
     }
 
     private static void checkAttunedRedstone() {
@@ -1947,6 +2171,37 @@ public final class ServerGameTests {
             "the sulfur dust has a tooltip",
             ArtificeRegistry.getTooltipMap()
                 .containsKey(new com.mrfuzzihead.artifice.util.NameMetaPair(ArtificeItems.itemResource, 0)));
+
+        // §7.5 collapsed 226 registration calls into 116 per-stack calls. What must not change is the lines and
+        // their order, so pin the shape of two stacks that have several: a dye (name + flavour) and a sledge
+        // (name, loss chance, flavour).
+        List<String> dye = ArtificeRegistry.getTooltipMap()
+            .get(new NameMetaPair(ArtificeItems.itemDye, 0));
+        check("the blue dye has two lines", dye != null && dye.size() == 2);
+        if (dye != null && dye.size() == 2) {
+            check(
+                "the dye's name line comes first",
+                dye.get(0)
+                    .equals(ArtificeTooltips.localizeTooltip("dye.blue", false)));
+            check(
+                "the dye's flavour line comes second",
+                dye.get(1)
+                    .equals(ArtificeTooltips.localizeTooltip("dye.blue", true)));
+            check(
+                "the flavour line is marked as such",
+                dye.get(1)
+                    .startsWith(ArtificeTooltips.commentCode));
+        }
+
+        List<String> sledge = ArtificeRegistry.getTooltipMap()
+            .get(new NameMetaPair(ArtificeItems.itemSledgeWood, 0));
+        check("the wooden sledge has three lines", sledge != null && sledge.size() == 3);
+        if (sledge != null && sledge.size() == 3) {
+            check(
+                "the sledge's loss line is in the middle",
+                sledge.get(1)
+                    .contains(ArtificeTooltips.localizeTooltip("sledge.loss", false)));
+        }
     }
 
     private static void checkConfigSurface() {

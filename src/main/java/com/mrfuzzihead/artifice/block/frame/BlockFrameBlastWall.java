@@ -8,6 +8,7 @@ import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -18,7 +19,7 @@ public class BlockFrameBlastWall extends BlockFrame {
     private IIcon[] icons = new IIcon[4];
 
     public BlockFrameBlastWall() {
-        this.setBlockName("artifice.reinforced");
+        this.setBlockName(Names.REINFORCED);
         GameRegistry.registerBlock(this, ItemBlockFrame.class, this.getUnlocalizedName());
     }
 

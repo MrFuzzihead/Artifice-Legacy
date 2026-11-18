@@ -11,6 +11,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -24,7 +25,7 @@ public class ItemUpgrade extends ItemArtifice {
         "Elastic Layering", "Scuba Tank", "Dive Kit" };
 
     public ItemUpgrade() {
-        this.setUnlocalizedName("artifice.upgrade");
+        this.setUnlocalizedName(Names.UPGRADE);
         GameRegistry.registerItem(this, this.getUnlocalizedName());
     }
 

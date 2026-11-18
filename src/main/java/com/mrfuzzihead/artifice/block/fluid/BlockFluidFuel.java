@@ -1,7 +1,5 @@
 package com.mrfuzzihead.artifice.block.fluid;
 
-import java.util.Locale;
-
 import net.minecraft.block.Block;
 import net.minecraft.block.material.MapColor;
 import net.minecraft.block.material.Material;
@@ -16,6 +14,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeFluids;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.util.BlockCoord;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cofh.core.fluid.BlockFluidCoFHBase;
 import cofh.lib.util.helpers.ServerHelper;
@@ -27,7 +26,7 @@ public class BlockFluidFuel extends BlockFluidCoFHBase {
     public static THashSet<Block> ignitionSources = new THashSet();
 
     public BlockFluidFuel() {
-        super("Artifice".toLowerCase(Locale.ENGLISH), ArtificeFluids.fluidFuel, Material.water, "fuel");
+        super(Names.FLUID_NAMESPACE, ArtificeFluids.fluidFuel, Material.water, "fuel");
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setQuantaPerBlock(8);
         this.setTickRate(20);

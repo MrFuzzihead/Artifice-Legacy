@@ -12,6 +12,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.EntityColoredFlameFX;
 import com.mrfuzzihead.artifice.render.TextureHandler;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.client.FMLClientHandler;
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -28,7 +29,7 @@ public class BlockColoredTorch extends BlockTorch {
         this.color = color;
         this.setCreativeTab(ArtificeCore.mainTab);
         this.setLightLevel(1.0F);
-        this.setBlockName("artifice.coloredtorch" + color);
+        this.setBlockName(Names.torch(color));
         this.setStepSound(Block.soundTypeWood);
         GameRegistry.registerBlock(this, ItemBlockArtifice.class, this.getUnlocalizedName());
     }

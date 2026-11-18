@@ -16,6 +16,7 @@ import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.util.ArrayUtils;
+import com.mrfuzzihead.artifice.util.Names;
 
 import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
@@ -30,7 +31,7 @@ public class BlockFlora extends BlockFlower {
         this.setTickRandomly(true);
         this.setCreativeTab(ArtificeCore.worldTab);
         this.setHardness(0.0F);
-        this.setBlockName("artifice.flora");
+        this.setBlockName(Names.FLORA);
         GameRegistry.registerBlock(this, ItemBlockFlora.class, this.getUnlocalizedName());
     }
 

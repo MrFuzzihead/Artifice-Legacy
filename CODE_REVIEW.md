@@ -43,6 +43,10 @@
 | 27 | Frame hardness was `meta + 5`, so corrupt metadata invented a hardness; the blast wall's extra 5 was unexplained (§9.3, §9.4) | cleanup | ~~P3~~ done |
 | 28 | Registry names were frozen by §4 but only in prose; nothing failed if one changed | infra | ~~P2~~ done |
 | 29 | `initBlocks` was one 144-line method (§7.4) | refactor | ~~P3~~ done |
+| 30 | 45 registry-name literals scattered across 30 classes (§7.3) | refactor | ~~P3~~ done |
+| 31 | 226 tooltip registrations and five copies of the tooltip lookup (§7.5) | refactor | ~~P3~~ done |
+| 32 | Scaffold support scanned a 33³ cube and ran a flood fill per candidate (§6.3) | perf | ~~P3~~ done |
+| 33 | Four ~100-line worldgen blob generators with two drifted differences (§7.1) | refactor | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -963,7 +967,7 @@ Status key: **done** = fixed; **open** = still there; **left** = deliberately no
 | `item/ItemSledge.java` | Every block break scanned the entire `CraftingManager` recipe list (thousands of entries in a GTNH pack). | Index shaped recipes by output item. | **done** |
 | `world/WorldGenLayer.java` | Built the same `NameMetaPair` twice per block (four world reads, two registry lookups on a hit) and did it for air too. | Read the block once, skip air. | **done** |
 | `util/MiscUtils.java:63-98` | Called per coil/battery per tick; built and shuffled a 6-element `Integer[]` each call (two allocations, six boxes) through `Math.random()`, which is one shared `Random` behind a lock. | Static `int[]` rotated by a random start. | **done, differently - see below** |
-| `block/frame/BlockFrameScaffold.java:205-225` | `isRooted` walks from `y-1` to 0 (up to 256 `getBlock` calls) on every neighbour change; `checkStay` then calls `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower is O(height · r³ · n²). | Walk the support chain once with a visited set; cap the radius search; replace the `LinkedList` flood fill with an `ArrayDeque` + `HashSet`. | open |
+| `block/frame/BlockFrameScaffold.java` | `isRooted` walks from `y-1` to 0 on every neighbour change; `checkStay` then called `getRadiusMatches` over a `(2r+1)³` cube (up to 33³ ≈ 36k blocks) **per candidate**, and `BlockCoord.isConnected` is a `LinkedList`-based flood fill with `contains()` (O(n²)). Placing a scaffold tower was O(height · r³ · n²). | One flood fill with a visited set. | **done** |
 | `block/world/BlockOre.java:142-204` (`sparkle`) | Called from `randomDisplayTick` on the client for every glowing ore in view; spawns up to 6 particles per call. Two of the six `world.getBlock` calls happen even when the first check fails. | Fine for a handful of ores; avoid `setTickRandomly` + `randomDisplayTick` double duty. | left (client-side) |
 | `compat/*` | Each compat class catches `Throwable` and prints a stack trace. Fine at load: the remaining classes are load-time only, and the two that used reflection now compile against the real API (§9.10). | Nothing. | left |
 | `render/RenderBlocksInverted.java` | 2,830 lines duplicating `RenderBlocks` just to render the inverted faces of frames. | Only on the client render path, but see §7. | left (client-side) |
@@ -986,6 +990,27 @@ Entries leave by three mechanisms: `invalidate()`, a `WorldEvent.Unload` hook (a
 again, so its tiles never reach `invalidate()`), and a sweep of invalid entries during a query. Only the third is
 load-bearing for correctness; the others keep the lists small.
 
+### 6.3 The scaffold walk: one flood fill, and the safety net that shaped it
+
+`checkStay` asked "is there an anchored block of my kind within my tier's overhang, reachable from here?" by scanning
+the whole `(2r+1)³` cube and then running a flood fill **per candidate** in it, each flood fill using
+`LinkedList.contains` and allocating a `BlockCoord` per neighbour. At tier 3 that is 35,937 block reads plus millions
+of list comparisons for a question with one answer. It is now a single flood fill over the connected run: visit each
+block once, test the anchor distance as you go.
+
+The safety net came first and earned its keep. `BlockFrameScaffoldSupportTest` carries the old algorithm transcribed
+as a reference and compares it with the shipped code over 900 random configurations plus curated cases. Two of my
+attempts at the flood fill were wrong in ways I would not have reasoned out:
+
+* **bounding the traversal by the overhang breaks a ring** - an anchor within reach can be connected only through
+  blocks outside it, which is why the old code bounded the distance check and not the search;
+* **the walk may only start if one of the five sides is the same tier, but once started it covers the whole
+  component** - including through the block above. The old code's two halves disagreed about that, and the test says
+  so.
+
+That second point is the behaviour recorded in §9.11. `BlockCoord.isConnected` and `getRadiusMatches` have no callers
+left (§8).
+
 ### 6.2 MiscUtils: why not the static rotation
 
 The review suggested a static `int[]` rotated by a random start, which would have removed the last allocation. It
@@ -1003,7 +1028,7 @@ pins the property and fails on the rotation.
 
 ## 7. Refactors
 
-### 7.1 One blob generator instead of four (≈700 lines removed) — **open**
+### 7.1 One blob generator instead of four - **done**
 
 `WorldGenCluster.ClusterGen` (`:139-215`), `WorldGenSulfur.SulfurGen` (`:145-230`) and
 `WorldGenDesert.NiterGen` (`:140-225`) are near-identical: same `TMap<ChunkCoord, ArrayList<BlockCoord>>`, same
@@ -1017,6 +1042,22 @@ abstract class BlobGen implements ISuspendableGen {
 ```
 
 and delete the three copies. This also fixes the shared `toGen` bug (5.6) once.
+
+**Status: done.** `world/BlobGen` holds the walk - per-chunk candidate queue, expand the neighbours of the current
+position, pick a candidate at random, replace it, repeat until the blob is the configured size - and each feature is a
+fifteen-line subclass saying which blocks it may replace (`canGen`), what a replacement looks like (`place`), and
+whether its budget survives a suspension.
+
+    Cluster  255 -> 137    Sulfur 206 -> 117    Desert 197 -> 108    Cave 265 -> 146    (+ BlobGen 168)
+
+447 lines gone. The two differences the four copies had drifted into are now explicit arguments rather than duplicated
+loops, and both are worth knowing because neither was chosen: sulfur and niter replace whatever their candidate check
+approved, while cluster and cave replace stone types and convert another mod's ore into their own variant of it; and
+caves keep the generation budget in a field, so a suspended generator stops at `size` blocks in total, while the other
+three keep it in a local, so each resume gets a fresh budget.
+
+The proof that this changed nothing is `checkWorldGenFingerprints` (§10.1): a hash of the 3x3 chunk area each
+generator produces for a fixed seed over a prepared band. All four are unchanged.
 
 ### 7.2 One frequency-probability helper instead of eight copies
 
@@ -1073,12 +1114,19 @@ produced 16 - and the "intended" 15.5 does not apply to it either, because `1500
 half-blob examples are 1550 and 150. The semantics change below 100 is real and deliberate: the config key is
 "Percentage … Frequency", and the defaults are 100 (150 for ender ore), so no default changes behaviour.
 
-### 7.3 Registry names as constants — **open**
+### 7.3 Registry names as constants - **done**
 
-Every `registerBlock`/`registerItem` call is made from a constructor with `getUnlocalizedName()` as the name.
-Introduce a `Names` class with `public static final String BASALT = "basalt";` … and use it in both the
-`setBlockName`/`registerBlock` pair. This also makes `GameRegistry.findBlock` usable
-for the first time.
+Every `registerBlock`/`registerItem` call was made from a constructor with a literal name. Forty-five literals across
+thirty classes are now in `util/Names`: one constant per fixed name, and a builder per family (`rock`, `slab`,
+`stairs`, `ore`, `lamp`, `torch`, `tool`) for the ones composed from parts.
+
+**Status: done.** No name changed - the 155-entry frozen list from the previous batch is the proof, and it is what
+made the sweep safe to do at all. Two names are deliberately not centralised: the bucket keeps its bare vanilla-style
+name, and the fluid blocks take theirs from CoFH's base class, which is handed the namespace.
+
+`NamesTest` pins the builders (case folding for ores, the `tile.` strip in stairs, the inverted lamp prefix) and that
+no two constants collide - except the steel block and the steel item, which share `artifice.steel` across two separate
+registries and always have.
 
 ### 7.4 `ArtificeBlocks.initBlocks` is one 150-line method - **done**
 
@@ -1093,12 +1141,23 @@ assigned in registration order and a world's id table only stays valid if that o
 loud now, and two groups carry the reason they sit where they do: `initFluids` defers to a fluid another mod may have
 registered, and `registerRockBlocks` has to run after the rocks and before the frames.
 
-### 7.5 The tooltip registry is 226 registration calls — **open**
+### 7.5 The tooltip registry is 226 registration calls - **done**
 
-`ArtificeTooltips` (752 lines) is a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)`. A
-`registerTooltips(Block/Item, String... lines)` helper keyed by the same metadata tables would shrink it by
-roughly 60% and make it impossible to forget a subtype. Note `ItemSledge`/`ItemSickle` look up tooltips with
-`getItemDamage() == 0` while `ItemBlockArtifice` uses the real damage — a helper would standardise this.
+`ArtificeTooltips` (752 lines) was a wall of `ArtificeRegistry.registerTooltip(new ItemStack(...), ...)` - 226 calls,
+rebuilding the `ItemStack` for every line of every stack.
+
+**Status: done.** Consecutive lines for the same stack go through one `tooltips(stack, line, ...)` call: 226 calls
+become 116 and the file loses 176 lines. The collapse was mechanical and checked - a parser grouped only calls that
+were adjacent, shared a textually identical stack, and were separated by nothing but whitespace - so order and content
+are unchanged by construction.
+
+The lookup was five copies of the same loop, and they had drifted: four honoured `ArtificeConfig.flavorText` and the
+box did not. `ArtificeRegistry.appendTooltips` does it once, with the box passing `allowFlavour = false` explicitly, so
+the difference is a decision rather than an omission. The sledge and sickle looked tooltips up at damage 0, which was
+harmless but said the wrong thing; they now use a wildcard item lookup that would survive a tool gaining metadata.
+
+The in-game tooltip test pins the shape of the two multi-line stacks (a dye: name then flavour; a sledge: name, loss
+chance, flavour) and that the flavour line carries the comment code the renderer filters on.
 
 ### 7.6 Unchecked collections - **done**
 
@@ -1144,6 +1203,7 @@ collision box against the block's own bounds.
 | `HeatStorage` | Implements `IHeatProvider`/`IHeatReceiver` and has tests, but **no tile entity uses it** (both machines use CoFH `EnergyStorage`). | Keep if it is intended as an API; otherwise delete. Its tests are the only reason it is covered. |
 | `XSRandom` | Never instantiated. | Delete, or use it in worldgen for determinism. |
 | `MiscUtils.getAdjoinedTileEntities` | No callers (it is the buggy depth-1 flood fill from §5.5). | Delete, or fix and use it for multiblock coils. |
+| `BlockCoord.isConnected` / `getRadiusMatches` | The scaffold support walk used both until §6.3 replaced it with one flood fill; nothing else calls them. | Delete, or keep as utility API - they are public and the support test still transcribes them. |
 | `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | **done**: the unchecked cast and a null-item dereference both answer `false` now, and the in-game "box stack comparison" test covers the pair (it cannot be headless - the harness has no bootstrapped item registry). |
 | `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | **done**: the annotation and `@Instance` read the constants, `modChannel` is deleted, and `RegistrationInvariantsTest` pins the version against the annotation. The network channel keeps its literal on purpose - it is the wire protocol's name and must not follow a future id change. |
 | `CommandCalc` evaluator | See §5.35. | Delete the command or restore the dependency. |
@@ -1268,6 +1328,17 @@ Two takeaways:
 
 ---
 
+### 9.11 A scaffold is not supported by the block above it
+
+Found while replacing the scaffold support walk (§6.3). The search only starts if one of the five **sides** is the
+same block and tier; the block directly above is not one of them. So an anchored scaffold column cannot be extended
+downwards - the new block has an anchored neighbour one block up, and that is not enough.
+
+Preserved by the refactor (it is a behaviour, not an implementation detail) and pinned by
+`BlockFrameScaffoldSupportTest.aBlockIsNotSupportedByTheBlockDirectlyAboveIt`. It reads like an oversight rather than a
+rule: hanging a scaffold from the one above it is what a player building downwards would expect. Worth deciding either
+way - the fix is one more direction in the entry check, and the test would then record the opposite.
+
 ### 9.10 Reflection in production code
 
 Audited after the migration work, because reflection is the one thing a namespace change can break silently and
@@ -1316,13 +1387,14 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ### 10.1 What is covered now
 
-* **Unit (155 tests, 21 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (170 tests, 23 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
+  registry-name builders, the scaffold support predicate against a transcription of the algorithm it replaced, the
   metadata-table invariants, and the `@Mod`/`@Instance` agreement.
-* **In-game (1,744 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+* **In-game (1,760 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1330,8 +1402,9 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
-  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), and the frozen
-  registry-name set.
+  collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen
+  registry-name set, the line order of the multi-line tooltips, the scaffold's tier-0 reach, and a fingerprint of what
+  each of the four worldgen generators places for a fixed seed.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1362,8 +1435,9 @@ registry:
    reachable. §5.12's off-by-one fix in six `getIcon` implementations is verified by reading, not by a test.
 2. **`Tracking` under load.** The index is unit-tested for correctness and the in-game test covers real placement,
    but nothing asserts the property that motivated it: that a query costs O(frequency) and not O(loaded tiles).
-3. **Worldgen determinism.** The blob generators are seeded per chunk; nothing compares a generated chunk against a
-   recorded one, so §7.1's refactor has no safety net beyond "the code looks equivalent".
+3. **Worldgen determinism** is covered now - `checkWorldGenFingerprints` records what each generator places for a
+   fixed seed - but only for one seed and one configuration per generator. A seed sweep is the next step if the
+   generators change again.
 4. **Multiplayer-only paths.** The sneak protocol (`BoxCraftingHandler`'s half is tested; the `S31Packet` round trip
    through a real connection is not), and `WorldEvent.Unload` handling for the frequency index - tested with a mock
    world, never with a real dimension unload.
