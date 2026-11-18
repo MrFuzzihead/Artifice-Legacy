@@ -112,9 +112,38 @@ public class ArtificeBlocks {
     public static TMap<String, Block> oreMappings;
     public static Set<NameMetaPair> oreSet;
 
+    /**
+     * Constructs and registers every block in the mod.
+     *
+     * <p>
+     * Split into the groups it always was, in the order it always ran. The order is load-bearing: block ids are
+     * assigned as blocks register, so reordering these calls renumbers every block after the change (CODE_REVIEW
+     * §7.4).
+     * </p>
+     */
     public static void initBlocks() {
+        initFlora();
+        initRocks();
+        initOres();
+        initFluids();
+        initDecorative();
+        registerRockBlocks();
+        initFrames();
+        initFunctional();
+    }
+
+    /**
+     * Flora first: the lily pad is a subtype of the flora block, and both register in their own constructors.
+     */
+    private static void initFlora() {
         blockFlora = new BlockFlora();
         blockLotus = new BlockLotus();
+    }
+
+    /**
+     * Basalt, marble, the limestone variants, and the stairs and slabs that hang off them.
+     */
+    private static void initRocks() {
         blockBasalt = new BlockRock("basalt");
         rockBlocks[0] = blockBasalt;
         blockMarble = new BlockRock("marble");
@@ -136,7 +165,13 @@ public class ArtificeBlocks {
             blockLimestoneBrickStairs[i] = new BlockStairsArtifice(blockLimestones[i], 2, rockColors[i]);
             blockLimestoneCobbleStairs[i] = new BlockStairsArtifice(blockLimestones[i], 1, rockColors[i]);
         }
+    }
 
+    /**
+     * The fifteen ore variants, the render-proxy dummy, and the three ores that are not in that table: sulfur, ender
+     * * and niter.
+     */
+    private static void initOres() {
         for (int i = 0; i < oreNames.length; i++) {
             if (!oreNames[i].equals("oreRedstone") && !oreNames[i].equals("oreEnder")) {
                 blockOres[i] = new BlockOre(oreNames[i], i);
@@ -151,6 +186,12 @@ public class ArtificeBlocks {
         blockEnderOre = new BlockEnderOre(false);
         blockEnderOreGlowing = new BlockEnderOre(true);
         blockNiter = new BlockNiter();
+    }
+
+    /**
+     * The four fluid blocks. Each defers to an existing block if another mod already registered the fluid.
+     */
+    private static void initFluids() {
         if (FluidRegistry.getFluid("oil")
             .getBlock() == null) {
             blockOil = new BlockFluidOil();
@@ -182,7 +223,13 @@ public class ArtificeBlocks {
             blockCreosote = FluidRegistry.getFluid("creosote")
                 .getBlock();
         }
+    }
 
+    /**
+     * Blocks that exist for their look or their drop: glow sand, coloured torches, charred log, tephra, and the two
+     * * attuned redstone blocks.
+     */
+    private static void initDecorative() {
         blockGlowSand = new BlockGlowSand();
 
         for (int ix = 0; ix < blockColoredTorches.length; ix++) {
@@ -194,6 +241,14 @@ public class ArtificeBlocks {
         blockAttunedRedstoneTransmitter = new BlockAttunedRedstone(true);
         blockAttunedRedstoneReceiver = new BlockAttunedRedstone(false);
         blockLogicRedstone = new BlockLogicRedstone();
+    }
+
+    /**
+     * Slab registration and the ore-dictionary entries for the rocks and the three loose ores. This runs after the
+     * * blocks exist and before the frames, which is the order 1.1.x shipped with: numeric block ids follow
+     * * registration order, so keeping the order stable keeps existing worlds' id tables unchanged.
+     */
+    private static void registerRockBlocks() {
         GameRegistry
             .registerBlock(blockBasaltSlab, ItemBlockSlabArtifice.class, blockBasalt.getUnlocalizedName() + ".slab");
         GameRegistry.registerBlock(
@@ -228,6 +283,12 @@ public class ArtificeBlocks {
         OreDictionary.registerOre("oreSulfur", new ItemStack(blockSulfur, 1, 0));
         OreDictionary.registerOre("oreSaltpeter", new ItemStack(blockNiter, 1, 1));
         OreDictionary.registerOre("oreEnder", new ItemStack(blockEnderOre, 1, 0));
+    }
+
+    /**
+     * The frame family, the glass ore-dictionary entries, and the steel block.
+     */
+    private static void initFrames() {
         blockFrame = new BlockFrameBase();
         blockDetector = new BlockFrameDetector();
         blockReinforced = new BlockFrameBlastWall();
@@ -244,7 +305,12 @@ public class ArtificeBlocks {
         if (ArtificeConfig.steelOreDict) {
             OreDictionary.registerOre("blockSteel", new ItemStack(blockSteel));
         }
+    }
 
+    /**
+     * The blocks that do something: lamps, uranium, the nuclear battery and the heating coil.
+     */
+    private static void initFunctional() {
         for (int ix = 0; ix < 16; ix++) {
             blockLamps[ix] = new BlockLamp(MinecraftColors.values()[ix], false);
             blockLampsInverted[ix] = new BlockLamp(MinecraftColors.values()[ix], true);
