@@ -21,7 +21,9 @@ import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.oredict.OreDictionary;
 
@@ -31,6 +33,8 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
+import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
+import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
@@ -87,6 +91,8 @@ public final class ServerGameTests {
         run("frame metadata", ServerGameTests::checkFrameMetadata);
         run("slab metadata", ServerGameTests::checkSlabMetadata);
         run("lamp lighting", ServerGameTests::checkLampLighting);
+        run("lamp stability", ServerGameTests::checkLampStability);
+        run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -501,6 +507,155 @@ public final class ServerGameTests {
                 "double marble slab drops the half slab",
                 ArtificeBlocks.blockMarbleDoubleSlab.getItemDropped(0, world.rand, 0)
                     == Item.getItemFromBlock(ArtificeBlocks.blockMarbleSlab));
+        } finally {
+            site.clear();
+        }
+    }
+
+    /**
+     * Scheduled updates are inspected, never run: nothing ticks during the assertions, so the world's pending set is
+     * the only evidence that a block asked to run again.
+     */
+    private static int pendingCount(World world, int x, int y, int z) {
+        return pending(world, x, y, z, false);
+    }
+
+    /** Consumes the pending update for one coordinate, which is what a world tick would have done. */
+    private static int drainPending(World world, int x, int y, int z) {
+        return pending(world, x, y, z, true);
+    }
+
+    private static int pending(World world, int x, int y, int z, boolean remove) {
+        Chunk chunk = world.getChunkFromBlockCoords(x, z);
+        List<?> scheduled = world.getPendingBlockUpdates(chunk, remove);
+        if (scheduled == null) return 0;
+
+        int found = 0;
+        for (Object entry : scheduled) {
+            NextTickListEntry update = (NextTickListEntry) entry;
+            if (update.xCoord == x && update.yCoord == y && update.zCoord == z) {
+                found++;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Section 5.19: the detector notified its neighbours on all three steps of its own cycle, including the step where
+     * nothing had changed. A neighbour that reacts to that notification (redstone dust, a second detector) notified
+     * back, found the detector idle and re-armed it, so one block change next to a dust line produced a pulse every
+     * two ticks for the life of the world.
+     *
+     * <p>
+     * The test drives the cycle by hand - the world is not ticking - and puts a {@link NeighborProbe} next to the
+     * detector so the echo happens for real, inside the same notification chain, exactly as dust's would.
+     * </p>
+     */
+    private static void checkDetectorPulse() {
+        World world = overworld();
+        TestSite site = TestSite.create(world, 768, 768);
+        BlockFrameDetector detector = (BlockFrameDetector) ArtificeBlocks.blockDetector;
+
+        try {
+            int x = site.x;
+            int y = site.y;
+            int z = site.z;
+
+            site.setBlock(x, y, z, detector, BlockFrameDetector.META_IDLE);
+            site.setBlock(x + 1, y, z, GameTestMod.probe, 0);
+            drainPending(world, x, y, z);
+            NeighborProbe.reset();
+
+            checkEquals("detector starts idle", BlockFrameDetector.META_IDLE, world.getBlockMetadata(x, y, z));
+            checkEquals("idle detector emits no power", 0, detector.isProvidingWeakPower(world, x, y, z, 0));
+
+            // What a neighbour changing looks like to the detector.
+            detector.onNeighborBlockChange(world, x, y, z, Blocks.stone);
+            check("detector arms on a neighbour change", pendingCount(world, x, y, z) == 1);
+
+            int steps = 0;
+            int transitions = 0;
+            int poweredSteps = 0;
+            int last = world.getBlockMetadata(x, y, z);
+
+            while (pendingCount(world, x, y, z) > 0 && steps < 32) {
+                drainPending(world, x, y, z);
+                detector.updateTick(world, x, y, z, world.rand);
+                steps++;
+
+                int meta = world.getBlockMetadata(x, y, z);
+                if (meta != last) transitions++;
+                if (detector.isProvidingWeakPower(world, x, y, z, 0) > 0) poweredSteps++;
+                last = meta;
+            }
+
+            check("detector stops pulsing next to an echoing neighbour", steps < 32);
+            checkEquals("one pulse is three transitions, not a cycle", 3, transitions);
+            checkEquals("detector ends idle", BlockFrameDetector.META_IDLE, last);
+            checkEquals("detector emits power for exactly one step", 1, poweredSteps);
+            checkEquals("detector stops with nothing scheduled", 0, pendingCount(world, x, y, z));
+            check("the probe saw the pulse", NeighborProbe.observations() > 0);
+
+            // The state table itself, including the heal path for metadata written by an older save.
+            check(
+                "cycle is idle -> active -> tail -> idle",
+                BlockFrameDetector.nextMetadata(BlockFrameDetector.META_IDLE) == BlockFrameDetector.META_ACTIVE
+                    && BlockFrameDetector.nextMetadata(BlockFrameDetector.META_ACTIVE) == BlockFrameDetector.META_TAIL
+                    && BlockFrameDetector.nextMetadata(BlockFrameDetector.META_TAIL) == BlockFrameDetector.META_IDLE);
+            checkEquals(
+                "corrupt metadata heals to idle",
+                BlockFrameDetector.META_IDLE,
+                BlockFrameDetector.nextMetadata(7));
+            check(
+                "only the active state powers redstone",
+                BlockFrameDetector.emitsPower(BlockFrameDetector.META_ACTIVE)
+                    && !BlockFrameDetector.emitsPower(BlockFrameDetector.META_IDLE)
+                    && !BlockFrameDetector.emitsPower(BlockFrameDetector.META_TAIL));
+        } finally {
+            site.clear();
+        }
+    }
+
+    /**
+     * Section 5.20: the lamp scheduled a tick for every neighbour change it saw, including the ones its own metadata
+     * write caused, so in a lamp wall every lamp re-queued every other lamp.
+     */
+    private static void checkLampStability() {
+        World world = overworld();
+        TestSite site = TestSite.create(world, 784, 768);
+        BlockLamp lamp = ArtificeBlocks.blockLamps[0];
+
+        try {
+            int x = site.x;
+            int y = site.y;
+            int z = site.z;
+
+            site.setBlock(x, y, z, lamp, 0);
+            site.setBlock(x + 1, y, z, GameTestMod.probe, 0);
+            drainPending(world, x, y, z);
+            NeighborProbe.reset();
+
+            // Unpowered and already at 0: no neighbour change can alter the light, so none may cost a tick.
+            lamp.onNeighborBlockChange(world, x, y, z, Blocks.stone);
+            checkEquals("lamp does not tick when its power cannot change", 0, pendingCount(world, x, y, z));
+
+            // Power it: now the target differs, so the lamp arms itself.
+            site.setBlock(x, y + 1, z, Blocks.redstone_block, 0);
+            lamp.onNeighborBlockChange(world, x, y, z, Blocks.redstone_block);
+            check("lamp arms when its power changes", pendingCount(world, x, y, z) == 1);
+
+            int steps = 0;
+            while (pendingCount(world, x, y, z) > 0 && steps < 16) {
+                drainPending(world, x, y, z);
+                lamp.updateTick(world, x, y, z, world.rand);
+                steps++;
+            }
+
+            checkEquals("lamp reaches full power", 15, world.getBlockMetadata(x, y, z));
+            checkEquals("lamp light follows the power", 15, lamp.getLightValue(world, x, y, z));
+            checkEquals("lamp ticks once, then goes quiet", 1, steps);
+            checkEquals("lamp leaves nothing scheduled", 0, pendingCount(world, x, y, z));
+            check("the probe saw the change", NeighborProbe.observations() > 0);
         } finally {
             site.clear();
         }
@@ -1673,8 +1828,10 @@ public final class ServerGameTests {
         }
 
         static TestSite create(World world) {
-            int x = 512;
-            int z = 512;
+            return create(world, 512, 512);
+        }
+
+        static TestSite create(World world, int x, int z) {
             int y = 250;
 
             // Clear the working volume so the site is deterministic regardless of terrain.

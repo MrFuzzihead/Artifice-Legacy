@@ -9,6 +9,7 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartedEvent;
+import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * Test-only mod: a separate, never-shipped {@code @Mod} that asserts Artifice works against a real game.
@@ -51,11 +52,17 @@ public class GameTestMod {
     static final String SMOKE_TEST_PROPERTY = "artifice.smokeTest";
     static final String SMOKE_DELAY_PROPERTY = "artifice.smokeTest.delay";
 
+    /** Registered here, used by the neighbour-update tests, never shipped. */
+    static NeighborProbe probe;
+
     private boolean ran;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
-        // Nothing to do: the assertions only need the registries, and those are read at server-start.
+        // The one thing the assertions cannot borrow from the mod under test: a neighbour that echoes a notification
+        // back, which is what turns a block that notifies too often into a neighbourhood-wide tick storm.
+        probe = new NeighborProbe();
+        GameRegistry.registerBlock(probe, "probe");
     }
 
     @Mod.EventHandler

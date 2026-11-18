@@ -661,11 +661,42 @@ happens to stop at meta 2. With a redstone dust line adjacent, each notification
 on the dust and on the detector, which re-schedules. This is the classic 1.7.10 neighbour-update storm; wrap the
 notification in a metadata-changed check and only notify on an edge (0→1, 1→2), not on every tick.
 
+**Status: fixed on `refactor/1.1.6`, and the fix needed one more thing than "notify on an edge".** Only notifying on
+the two power edges is not sufficient on its own: a neighbour that reacts to the falling edge notifies back, and if it
+did so after we were idle again we would simply re-arm. The pulse therefore keeps three states - `META_IDLE`,
+`META_ACTIVE` (the only one that emits power) and `META_TAIL` - and the tail is the point. The falling edge is written
+while we are active, so the proactive metadata write (flag 1) tells the neighbours, and any echo they send back finds
+us in `META_TAIL` and is dropped; the tail then returns to idle with a **silent** write (`FLAGS_SILENT`, flag 2 -
+clients only, no block update), so nothing is left to re-arm. The explicit
+`notifyBlocksOfNeighborChange` call is gone: the flag already notifies, and calling both meant three notifications per
+pulse, one of them arriving with the power already off.
+
+Two smaller hardenings came with it: `onNeighborBlockChange` compares the neighbour by identity (`neighbor == this`
+instead of `neighbor.equals(this)`, which NPEs on a null neighbour) and refuses to arm while a pulse is in flight; and
+corrupt metadata (3-15 from an older save) now heals to idle instead of falling through to the "else" branch.
+
+Tested at both levels. `BlockFrameDetectorTest` pins the three-state table, the two power edges, the heal path and
+that one pulse is three steps with one powered step. The in-game `detector pulse` test
+(`ServerGameTests:checkDetectorPulse`) puts a `NeighborProbe` - a test-only block that echoes every neighbour change
+back, which is exactly what dust does - next to the detector, drives the cycle by hand and counts the world's pending
+scheduled updates: **32 transitions on the old code, 3 now**, ending idle with nothing scheduled.
+
 ### 5.20 `BlockLamp.onNeighborBlockChange` schedules unconditionally — **P2 (lag)**
 
 `block/decorative/BlockLamp.java:136-140` schedules a 2-tick update for *any* neighbour change, including the
 `setBlockMetadataWithNotify` the lamp itself performs. Combine with 5.19 and a lamp wall becomes a permanent
 ticking machine. Check whether the computed power actually differs before scheduling.
+
+**Status: fixed on `refactor/1.1.6`.** `targetMetadata(int indirect, int direct)` is now one helper - the old code
+spelled the same two queries out in two branches, which is why there was no way to ask "would this change anything?" -
+and `onNeighborBlockChange` returns early when the target already equals the metadata, and when the neighbour is the
+lamp itself. `updateTick` is unchanged in effect (write only on a difference) but now reads through the helper, and the
+literal `2` became `tickRate`. The inverted lamps get the same path, since only the light mapping differs.
+
+Tested by `BlockLampTest` (the helper's max-of-two semantics, exhaustively over 0-15 × 0-15) and by the in-game
+`lamp stability` test, which asserts the two things that were wrong: a lamp whose power cannot change schedules
+nothing, and a lamp that does change runs **one** tick and leaves nothing scheduled. Against the old code the first
+assertion fails immediately (one pending update where there should be none) and the second reports two ticks.
 
 ### 5.21 Machine config values are unvalidated and one is an integer divisor — **P2**
 
@@ -1194,16 +1225,18 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
 
 ### 10.1 What is covered now
 
-* **Unit (132 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (141 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
-  sweep, the creative-tab side annotations, plus the metadata-table invariants and the `@Mod`/`@Instance` agreement.
-* **In-game (1,677 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, plus the metadata-table invariants and
+  the `@Mod`/`@Instance` agreement.
+* **In-game (1,696 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
-  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface.
+  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
+  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour).
 
 ### 10.2 Why the headless number is low, and what to do about it
 

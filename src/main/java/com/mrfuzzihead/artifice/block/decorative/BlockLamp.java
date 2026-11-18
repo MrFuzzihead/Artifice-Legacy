@@ -28,6 +28,8 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockLamp extends BlockArtifice {
 
+    private static final int tickRate = 2;
+
     MinecraftColors color;
     private boolean inverted;
     private IIcon icon;
@@ -109,23 +111,34 @@ public class BlockLamp extends BlockArtifice {
         return this.getIcon(side, meta);
     }
 
+    /**
+     * The metadata a lamp wants: the strongest of the indirect power around it and whatever is fed directly into it.
+     * The old code spelled this out as two branches around the same pair of queries, which is why a lamp re-ran its
+     * own tick on every neighbour change - there was no way to ask "would this change anything?".
+     */
+    static int targetMetadata(int indirect, int direct) {
+        return indirect > direct ? indirect : direct;
+    }
+
+    private static int targetMetadata(World world, int x, int y, int z) {
+        return targetMetadata(world.getStrongestIndirectPower(x, y, z), world.getBlockPowerInput(x, y, z));
+    }
+
     public void updateTick(World world, int x, int y, int z, Random rand) {
-        if (world.isBlockIndirectlyGettingPowered(x, y, z) || world.getBlockPowerInput(x, y, z) != 0) {
-            int power = world.getStrongestIndirectPower(x, y, z) > world.getBlockPowerInput(x, y, z)
-                ? world.getStrongestIndirectPower(x, y, z)
-                : world.getBlockPowerInput(x, y, z);
-            if (world.getBlockMetadata(x, y, z) != power) {
-                world.setBlockMetadataWithNotify(x, y, z, power, 3);
-            }
-        } else if (world.getBlockMetadata(x, y, z) != 0) {
-            world.setBlockMetadataWithNotify(x, y, z, 0, 3);
+        int target = targetMetadata(world, x, y, z);
+        if (world.getBlockMetadata(x, y, z) != target) {
+            world.setBlockMetadataWithNotify(x, y, z, target, 3);
         }
     }
 
     public void onNeighborBlockChange(World world, int x, int y, int z, Block neighbor) {
-        if (!world.isRemote) {
-            world.scheduleBlockUpdate(x, y, z, this, 2);
-        }
+        if (world.isRemote) return;
+        // Our own metadata write notifies the neighbours, which notify us back. Sorting that out is what
+        // updateTick is for, so only a change that would actually alter the light is worth a tick.
+        if (neighbor == this) return;
+        if (targetMetadata(world, x, y, z) == world.getBlockMetadata(x, y, z)) return;
+
+        world.scheduleBlockUpdate(x, y, z, this, tickRate);
     }
 
     @Override
