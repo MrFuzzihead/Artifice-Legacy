@@ -1242,9 +1242,9 @@ collision box against the block's own bounds.
 | `CommandCalc` evaluator | See §5.35. | Delete the command or restore the dependency. |
 | `BlockRock.isReplaceableOreGen` | **Not dead code - this row was wrong.** `WorldGenMinable.generate` calls `isReplaceableOreGen` on the block it is about to replace, passing the block it intends to replace. | Keep, and it is now documented in place and pinned by the in-game drop test. Deleting it would have stopped other mods' ore generators from putting veins through basalt or marble. |
 | `BlockOre.tickRate` | Returns 30 but `setTickRandomly` uses the random-tick rate, not `tickRate`. | **done**: dropped. Verified first - nothing in 1.7.10 calls `Block.tickRate`; `World` and `WorldServer` never reference it. |
-| `FrameRenderer.getRenderId()` | Returns 0 (see §5.30). | Fix. |
+| `FrameRenderer.getRenderId()` | Returned 0 (see §5.30). | **done**: returns `ArtificeConfig.frameRenderID`. Not testable here - client-only. |
 | `FormatCodes.RandomChar` / `Strike` / `Underlined` | Only `Italic`, `Aqua`, `Yellow`, `Reset`, `DarkGrey` are used. | Harmless; keep as a complete table. |
-| `ArtificeBlocks.blockDummy` | Registered nowhere (intentionally — it is a render proxy for `OreRenderer`). | Add a comment; the game test deliberately excludes it. |
+| `ArtificeBlocks.blockDummy` | Registered nowhere (intentionally — it is a render proxy for `OreRenderer`). | **done**: the field says so, and why the game test excludes it. |
 
 ---
 
