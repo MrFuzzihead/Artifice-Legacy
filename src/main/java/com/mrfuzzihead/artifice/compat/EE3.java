@@ -22,6 +22,10 @@ public class EE3 implements ICompat {
     @Override
     public void load() {
         try {
+            // Deliberately still reflective. EE3 has no published deobfuscated artifact (not on the GTNH maven, and
+            // its CurseForge files are 1.7.10 pre-releases), so there is nothing to compile against - and the mod is
+            // absent from the pack this build targets, which would make a hard dependency pure maintenance. The two
+            // lookups are by field *name*, so an EE3 update degrades to the catch below instead of crashing.
             Class<?> itemClass = Class.forName("com.pahimar.ee3.init.ModItems");
             List<ItemStack> stoneList = new ArrayList<>();
             stoneList.add(

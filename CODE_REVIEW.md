@@ -1146,18 +1146,53 @@ Two takeaways:
 
 ---
 
+### 9.10 Reflection in production code
+
+Audited after the migration work, because reflection is the one thing a namespace change can break silently and
+because it is the only Java-level indirection in the mod.
+
+**Nothing in three of the four categories.** No Mixins (`usesMixins = false`, no `mixins.<modid>.json`, no
+SpongePowered imports, nothing in `dependencies.gradle`), no ASM or coremod (`coreModClass` empty, no
+`IFMLLoadingPlugin`/`IClassTransformer`), no access transformers (`accessTransformersFile` empty, no `*_at.cfg`, no
+`META-INF` at all).
+
+**Reflection: one site left, deliberately.**
+
+| Site | Was | Now |
+|---|---|---|
+| `compat/CarpentersBlocks` | `Class.forName("...FeatureRegistry").getField("coverExceptions")` | `compileOnly` on `CarpentersBlocks:3.7.3-GTNH`, direct `FeatureRegistry.coverExceptions` |
+| `compat/Forestry` | `Class.forName("forestry.api.apiculture.FlowerManager").getField("plainFlowers")` | `compileOnly` on `ForestryMC:4.12.1`, direct `FlowerManager.plainFlowers` |
+| `item/ItemSledge` | `ObfuscationReflectionHelper.getPrivateValue(ShapedOreRecipe.class, recipe, **3**)` | `recipe.getInput()` - the accessor is public in 1.7.10 Forge |
+| `compat/EE3` | `Class.forName("com.pahimar.ee3.init.ModItems")`, two static fields | **unchanged** |
+
+The sledge one was the worst of them: a **field index**, not a name, so any Forge field addition or reorder would
+have silently changed which field was read. `ShapedOreRecipe#getInput()` has been public since 1.7.10, so there was
+never a reason to reflect.
+
+EE3 stays reflective for two reasons: there is no published deobfuscated artifact (not on the GTNH maven; its
+CurseForge files are 1.7.10 pre-releases), so there is nothing to compile against, and EE3 is absent from the pack
+this build targets, so a hard dependency would be maintenance for a path that never runs. Its lookups are by field
+*name*, so a version change degrades to the existing `catch` rather than crashing.
+
+The two converted compat classes keep their `try`/`catch (Throwable)` and their `Loader.isModLoaded` gate: the
+`compileOnly` reference makes a version mismatch a `NoSuchFieldError` (an `Error`, not an `Exception`), and an
+optional integration must never take the game down. Their classes are constructed unconditionally in `preInit` but
+only *loaded* when the gate passes, so an absent mod costs nothing.
+
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (77 tests, headless):** pure value types and algorithms — `BlockCoord` (89/188 lines), `ChunkCoord`
-  (19/24), `NameMetaPair` (18/34), `MiscUtils` (7/69), `HeatStorage` (20/20), `MinecraftColors` (43/43),
-  `FormatCodes` (26/26), `RomanUtil`, `XSRandom`, `EnumUpgrades`, `TileEntityLogic` (19/57), the packet codec
-  (15/15), plus the metadata-table invariants and the `@Mod`/`@Instance` agreement.
-* **In-game (1,442 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
-  membership, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold support, the logic
-  block truth table, the attuned frequency link, heating-coil → six-furnace transfer, nuclear-battery
-  charge round-trip, drops, recipe presence, tooltips, config surface.
+* **Unit (132 tests, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+  `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
+  `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
+  surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
+  sweep, the creative-tab side annotations, plus the metadata-table invariants and the `@Mod`/`@Instance` agreement.
+* **In-game (1,677 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
+  anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
+  heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
+  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
