@@ -31,7 +31,7 @@
 | 15 | The frequency-probability formula is wrong at both ends: `0` means "once per chunk", `99` is 100× rarer than `100`, and `>1000` saturates (§7.2) | bug | ~~P2~~ done |
 | 16 | `RFperFurnaceHeat` is an unvalidated integer divisor; `0` throws `ArithmeticException` in the heating coil (§5.21) | bug | ~~P2~~ done |
 | 17 | `/calc` is registered but its evaluator is commented out; it prints `1+1 = ` | broken feature | ~~P3~~ done (deleted) |
-| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | P3 (open - §7.1) |
+| 18 | ~900 lines of duplicated worldgen blob code (Cluster/Sulfur/Desert/Cave) | refactor | ~~P3~~ done (§7.1) |
 | 19 | `ItemSledge` scans the whole crafting table on every block break | perf | ~~P3~~ done |
 | 20 | `Tracking` rescans every loaded tile entity of every world, per attuned block, per tick | perf | ~~P3~~ done |
 | 21 | `WorldGenLayer` read every block twice and shuffled air through the lookup (§6) | perf | ~~P3~~ done |
@@ -59,13 +59,14 @@ are not codebase defects, but they decide whether the migration boots at all.
 |---|---|---|---|
 | P1 | **FuzziTweaks 1.2.0 hard-links `shukaro.artifice` from a Mixin.** Its `ArtificeEnchantsMixin` targets `shukaro.artifice.ArtificeEnchants` and reads `ArtificeConfig` / `ArtificeCore` fields. The target is gated on the *mod id* `Artifice`, which the rename does not change, so the mixin is still queued and then fails → **startup crash**. Must be dropped in the same release (§3.2, Appendix E.3) | pack | **P0** |
 | P2 | Port FuzziTweaks' enchant-id allocation in-tree **first**, preserving ids 70/71/72, or dropping the mixin silently re-collapses the three enchantments onto one id (§5.3) | code | **P0** |
-| P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | P3 |
-| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | P3 |
+| P3 | `config/angelica-modules.cfg:51` — one string (`shukaro.artifice.block.world.BlockOre` → `com.mrfuzzihead.…`) | pack | **done from our side** (§9.12) |
+| P4 | Chisel's Artifice carving table never worked (it looks up `Artifice:artifice.marble`; the real name is `Artifice:tile.artifice.marble`). Optional repair, not migration work (E.4) | pack / upstream | **done from our side** (§9.9) |
 
 P1 and P2 are **done and merged**, in two halves that have to be released together: the in-tree allocation and the
 70/71/72 assertion are in this repo (§5.3), and the mixin, its config key and FuzziTweaks' `shukaro.artifice` compile
 dependency are gone on `refactor/drop-artifice-mixin` there. Cutting 1.1.6 is what releases them as one event. P3 and
-P4 are untouched.
+P4 no longer need a pack-side edit or an upstream PR: the Chisel groups are registered from our side (§9.9) and the
+Angelica whitelist is rewritten at startup (§9.12).
 
 ---
 
@@ -175,8 +176,8 @@ The case against was measured on the real pack (Appendix E):
 * **Configs key on `modid:name`.** AE2 (facade list + `Facades.cfg`), ProjectE, RTG, Mystcraft and UniDict all name
   Artifice stacks that way (E.7). Each would need re-keying, or a legacy alias layer, or both.
 * **Nothing needs it.** No jar in the pack depends on the mod id — no `required-after:Artifice`, no IMC address, no
-  network channel, no mod-container lookup (E.2). The only two consumers are Chisel, whose table is already broken
-  (E.4), and FuzziTweaks, which is ours and is being fixed anyway (E.3).
+  network channel, no mod-container lookup (E.2). The only two consumers are Chisel, whose table never resolved a
+  name and which we now drive from our side (§9.9), and FuzziTweaks, which is ours and is being fixed anyway (E.3).
 * **The upside was cosmetic** — `artifice:basalt` instead of `artifice:tile.artifice.basalt` — against a release
   that would have to carry `missingMappings` remaps for every block and item, a config migration, and a worldgen
   retrogen story.
@@ -1294,7 +1295,7 @@ Game test: the name is written; a stale numeric id loses to the name; an id-only
 item the pack does not have resolves to null and is left alone instead of throwing; and a name-carrying box yields
 its contents through the crafting handler.
 
-### 9.7 Fluids
+### 9.7 Fluids - **open, waiting on a decision**
 
 `ArtificeFluids` registers `oil`/`fuel`/`creosote`/`bitumen` only if they are not already registered, and
 `ArtificeBlocks` then reuses the existing block if the fluid already has one. Good. But `ArtificeItems` still
@@ -1326,18 +1327,19 @@ Two takeaways:
 * If Chisel support is wanted before then, it is cheaper to register the carving groups from our side, where the
   real names are known, than to wait for another repo. Sketched in E.4.
 
+**Status: fixed here.** `compat/chisel/CarvingTable` is the table - registry names built from `Names`, groups, metadata
+and Chisel's original `order` of 99 - and `compat/ChiselCompat` hands it to `Carving.chisel.addVariation` behind
+`Loader.isModLoaded("chisel")`, compiled against the Chisel API as `compileOnly`. Two deliberate departures from
+Chisel's table: every carvable form of a rock is registered (metadata 0-5, and 0-3 for slabs), because a group is
+looked up by block *and* metadata, so meta 0 alone would leave a player holding marble bricks with a chisel that does
+nothing; and basalt and the limestone slabs are included, which Chisel never knew about.
+
+The names are the whole bug, so they are pinned twice: `CarvingTableTest` asserts them as literals - including the
+`tile.`-less form that never resolved - and `ServerGameTests.checkChiselCarvingNames` resolves every entry against the
+real registry and checks the resolved set is exactly the rocks and rock slabs. An entry that fails to resolve is now a
+warning in the log naming the block, rather than the silent early return that hid this for years.
+
 ---
-
-### 9.11 A scaffold is not supported by the block above it
-
-Found while replacing the scaffold support walk (§6.3). The search only starts if one of the five **sides** is the
-same block and tier; the block directly above is not one of them. So an anchored scaffold column cannot be extended
-downwards - the new block has an anchored neighbour one block up, and that is not enough.
-
-Preserved by the refactor (it is a behaviour, not an implementation detail) and pinned by
-`BlockFrameScaffoldSupportTest.aBlockIsNotSupportedByTheBlockDirectlyAboveIt`. It reads like an oversight rather than a
-rule: hanging a scaffold from the one above it is what a player building downwards would expect. Worth deciding either
-way - the fix is one more direction in the entry check, and the test would then record the opposite.
 
 ### 9.10 Reflection in production code
 
@@ -1383,18 +1385,55 @@ The two converted compat classes keep their `try`/`catch (Throwable)` and their 
 optional integration must never take the game down. Their classes are constructed unconditionally in `preInit` but
 only *loaded* when the gate passes, so an absent mod costs nothing.
 
+### 9.11 A scaffold is not supported by the block above it
+
+Found while replacing the scaffold support walk (§6.3). The search only starts if one of the five **sides** is the
+same block and tier; the block directly above is not one of them. So an anchored scaffold column cannot be extended
+downwards - the new block has an anchored neighbour one block up, and that is not enough.
+
+Preserved by the refactor (it is a behaviour, not an implementation detail) and pinned by
+`BlockFrameScaffoldSupportTest.aBlockIsNotSupportedByTheBlockDirectlyAboveIt`. It reads like an oversight rather than a
+rule: hanging a scaffold from the one above it is what a player building downwards would expect. Worth deciding either
+way - the fix is one more direction in the entry check, and the test would then record the opposite.
+
+### 9.12 Rewriting Angelica's render-pass whitelist - **done**
+
+Angelica's `blockCrackFixRenderPassWhitelist` is a list of class-name strings whose default lives in Angelica's jar
+(E.5), and the default still names `shukaro.artifice.block.world.BlockOre`. There is no API to add to it, so a pack
+update regenerates the wrong value and Artifice ores drop off the whitelist (z-fighting with `blockCrackFix` on).
+
+`compat/AngelicaWhitelist` rewrites `config/angelica-modules.cfg` in place. Four decisions worth recording:
+
+* **Timing.** It runs from `FMLConstructionEvent`, the earliest hook that still precedes every mod's `preInit`, and
+  again from `FMLLoadCompleteEvent` as a catch-all for a first launch where Angelica writes the file after that pass.
+  It is deliberately *not* an `ICompat`: those run in `init`, far too late. On a first launch the fix takes effect on
+  the next launch; that is logged, not hidden.
+* **Nothing else moves.** The file is read and written as ISO-8859-1, one byte per char, so comments, ordering and CRLF
+  survive byte-for-byte - asserted by `AngelicaWhitelistTest.lineEndingsSurvive` and
+  `bytesThatAreNotAsciiArePreserved`. It is written through a sibling temp file and renamed over the target, so an
+  interrupted write cannot leave a truncated config for Angelica to read as "the player removed everything".
+* **Only the known class name.** Any *other* `shukaro.artifice.` reference in the file is counted and logged, not
+  rewritten: an unexpected class name is a reason to look, not to guess.
+* **Never fatal.** A failure to write somebody else's config logs a warning and the mod loads; `AngelicaWhitelistTest`
+  covers the missing file, a directory where the file should be, and the no-op re-run.
+
+Verified end to end by dropping a real `angelica-modules.cfg` (CRLF, legacy entry) into `run/server/config` and running
+the in-game suite: one rewrite, every other byte identical, `1763/1763` checks green.
+
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (170 tests, 23 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (190 tests, 25 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
   `TileEntityLogic`, the packet codec, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
   registry-name builders, the scaffold support predicate against a transcription of the algorithm it replaced, the
-  metadata-table invariants, and the `@Mod`/`@Instance` agreement.
-* **In-game (1,760 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  metadata-table invariants, the Chisel carving table (names, groups, metadata forms and order, asserted as literals
+  rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip, CRLF and non-ASCII preservation,
+  idempotence, absent file), and the `@Mod`/`@Instance` agreement.
+* **In-game (1,763 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1404,7 +1443,8 @@ only *loaded* when the gate passes, so an absent mod costs nothing.
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
   collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen
   registry-name set, the line order of the multi-line tooltips, the scaffold's tier-0 reach, and a fingerprint of what
-  each of the four worldgen generators places for a fixed seed.
+  each of the four worldgen generators places for a fixed seed, and the join the Chisel integration always failed:
+  every carving-table name resolving to a registered block, and nothing but our rocks and rock slabs in it.
 
 ### 10.2 Why the headless number is low, and what to do about it
 
@@ -1731,6 +1771,12 @@ Where to fix it, in order of preference:
 2. **Chisel** — the three literals above; correct, but a second repo and a second release.
 3. **Nothing** — status quo; the rename costs nothing either way.
 
+**Done: option 1.** `compat/ChiselCompat` runs from the compat list in `init` (not `postInit` - `addVariation` creates a
+missing group and Chisel sorts variations by `order`, so our 99-and-up entries land after its own whichever side
+registers first), compiled against `com.github.GTNewHorizons:Chisel:2.18.1-GTNH:dev` as `compileOnly`. The names live
+in `compat/chisel/CarvingTable`, are pinned as literals by `CarvingTableTest`, and are resolved against the real
+registry by `ServerGameTests.checkChiselCarvingNames` - which is the join that was silently null. See §9.9.
+
 ### E.5 Angelica 2.2.46 — a class name baked into a config default
 
 ```java
@@ -1752,6 +1798,13 @@ shukaro.artifice.block.world.BlockOre   ->   com.mrfuzzihead.artifice.block.worl
 
 Because the *default* lives in Angelica's jar, a fresh instance will regress. Worth a one-line upstream PR that
 lists both class names.
+
+**Done from our side instead: `compat/AngelicaWhitelist` rewrites the file at startup** (§9.12). It runs from
+`FMLConstructionEvent` - before any mod's `preInit` reads its config - and again at `FMLLoadCompleteEvent`, patches only
+this one class name, reports any other `shukaro.artifice.` reference without touching it, and preserves every other byte
+of the file. `AngelicaWhitelistTest` covers the rewrite, the CRLF and non-ASCII round trips, the no-op re-run, and the
+absent-file case; the hook was verified end to end against a real config in `run/server/config`. The upstream PR is
+still worth making - it is the only fix that survives a fresh install - but it is no longer required for this pack.
 
 ### E.6 Not a consumer (and how to tell)
 

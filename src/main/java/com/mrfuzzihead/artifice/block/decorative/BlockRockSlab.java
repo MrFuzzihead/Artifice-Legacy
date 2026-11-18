@@ -24,9 +24,10 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockRockSlab extends BlockSlab {
 
-    private static String[] types = new String[] { "brick", "cobble", "paver", "antipaver" };
+    /** The four slab subtypes, indexed by metadata (CODE_REVIEW 9.9 reads this to build the Chisel groups). */
+    public static final String[] TYPES = new String[] { "brick", "cobble", "paver", "antipaver" };
     private IIcon paverSide;
-    private IIcon[] icons = new IIcon[types.length];
+    private IIcon[] icons = new IIcon[TYPES.length];
     private boolean isDouble;
     private String name;
     private int color = 16777215;
@@ -79,7 +80,7 @@ public class BlockRockSlab extends BlockSlab {
     @SideOnly(Side.CLIENT)
     public void getSubBlocks(Item id, CreativeTabs tab, List list) {
         if (!this.isDouble) {
-            for (int i = 0; i < types.length; i++) {
+            for (int i = 0; i < TYPES.length; i++) {
                 list.add(new ItemStack(id, 1, i));
             }
         }
@@ -87,11 +88,11 @@ public class BlockRockSlab extends BlockSlab {
 
     public String func_150002_b(int meta) {
         meta = meta > 7 ? meta - 8 : meta;
-        if (meta >= types.length) {
+        if (meta >= TYPES.length) {
             meta = 0;
         }
 
-        return "tile.artifice." + this.name + (this.isDouble ? ".doubleslab." : ".slab.") + types[meta];
+        return "tile.artifice." + this.name + (this.isDouble ? ".doubleslab." : ".slab.") + TYPES[meta];
     }
 
     @SideOnly(Side.CLIENT)
@@ -115,7 +116,7 @@ public class BlockRockSlab extends BlockSlab {
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(int side, int meta) {
         meta &= 7;
-        if (meta > types.length) {
+        if (meta > TYPES.length) {
             meta = 0;
         }
 

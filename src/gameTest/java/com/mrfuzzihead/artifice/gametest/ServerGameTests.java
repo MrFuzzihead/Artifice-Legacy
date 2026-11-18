@@ -45,6 +45,7 @@ import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.block.world.BlockRock;
+import com.mrfuzzihead.artifice.compat.chisel.CarvingTable;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
@@ -73,6 +74,7 @@ import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
 import cofh.api.world.IFeatureGenerator;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
+import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * The in-game assertions. Each {@code check*} method reports every failure through {@link #check} so the exit code
@@ -111,6 +113,7 @@ public final class ServerGameTests {
         run("rock metadata", ServerGameTests::checkRockMetadata);
         run("frame metadata", ServerGameTests::checkFrameMetadata);
         run("frozen registry names", ServerGameTests::checkFrozenRegistryNames);
+        run("chisel carving names", ServerGameTests::checkChiselCarvingNames);
         run("slab metadata", ServerGameTests::checkSlabMetadata);
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("lamp stability", ServerGameTests::checkLampStability);
@@ -577,6 +580,48 @@ public final class ServerGameTests {
         check("no frozen registry name disappeared " + missing, missing.isEmpty());
         check("no registry name was added without freezing it here " + added, added.isEmpty());
         checkEquals("the frozen registry name count", expected.size(), actual.size());
+    }
+
+    /**
+     * Every name in {@link CarvingTable} must resolve to a registered block (CODE_REVIEW §9.9 / E.4).
+     *
+     * <p>
+     * This is the other half of {@code CarvingTableTest}: that test pins the strings, this one proves they are the
+     * strings the registry actually uses. The integration Chisel shipped failed on exactly this join - a name that
+     * looked right and resolved to null - and failed silently, so it is asserted here rather than trusted.
+     * </p>
+     */
+    private static void checkChiselCarvingNames() {
+        Set<Block> resolved = new HashSet<>();
+        List<String> unresolved = new ArrayList<>();
+
+        for (CarvingTable.Entry entry : CarvingTable.entries()) {
+            Block block = GameRegistry.findBlock(ArtificeCore.modID, entry.registryName);
+            if (block == null) {
+                unresolved.add(entry.qualifiedName());
+            } else {
+                resolved.add(block);
+            }
+        }
+
+        check("every chisel carving name resolves to a block " + unresolved, unresolved.isEmpty());
+
+        Set<Block> expected = new HashSet<>();
+        expected.add(ArtificeBlocks.blockBasalt);
+        expected.add(ArtificeBlocks.blockMarble);
+        expected.add(ArtificeBlocks.blockBasaltSlab);
+        expected.add(ArtificeBlocks.blockMarbleSlab);
+        for (int i = 0; i < ArtificeBlocks.rockColorNames.length; i++) {
+            expected.add(ArtificeBlocks.blockLimestones[i]);
+            expected.add(ArtificeBlocks.blockLimestoneSlabs[i]);
+        }
+
+        Set<Block> missing = new HashSet<>(expected);
+        missing.removeAll(resolved);
+        Set<Block> extra = new HashSet<>(resolved);
+        extra.removeAll(expected);
+        check("every rock and rock slab is in the carving table " + missing, missing.isEmpty());
+        check("the carving table names nothing else " + extra, extra.isEmpty());
     }
 
     private static void checkFrameMetadata() {
