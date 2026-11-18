@@ -102,8 +102,8 @@ public class RegistrationInvariantsTest {
 
     @Test
     public void oreTableOrderMatchesTheHardcodedSparkleIndices() {
-        // BlockOre.sparkle() hardcodes index 5 for the redstone dust effect and index 13 for the ender particles,
-        // and BlockRock/ItemBlockOre address rockBlockNames by the same index. Both depend on this exact ordering.
+        // BlockOre.INDEX_REDSTONE / INDEX_ENDER drive the two particle effects and are indices into this table, as are
+        // the rockBlockNames lookups in BlockRock and ItemBlockOre. All of them depend on this exact ordering.
         Assert.assertEquals(15, ArtificeBlocks.oreNames.length);
         Assert.assertEquals("oreRedstone", ArtificeBlocks.oreNames[5]);
         Assert.assertEquals("oreEnder", ArtificeBlocks.oreNames[13]);

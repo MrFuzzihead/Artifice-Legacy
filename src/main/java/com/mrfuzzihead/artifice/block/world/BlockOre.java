@@ -35,6 +35,14 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockOre extends BlockArtifice {
 
+    /**
+     * The two ores with a particle effect, by their index in {@link ArtificeBlocks#oreNames}. That table is
+     * positional and its order is pinned by {@code RegistrationInvariantsTest}, so these two numbers are the only
+     * coupling left between the effect and the ore list.
+     */
+    private static final int INDEX_REDSTONE = 5;
+    private static final int INDEX_ENDER = 13;
+
     private IIcon icon;
     private String name;
     private Integer color;
@@ -141,7 +149,7 @@ public class BlockOre extends BlockArtifice {
     }
 
     private void sparkle(World world, int x, int y, int z) {
-        if (this.index == 5) {
+        if (this.index == INDEX_REDSTONE) {
             Random random = world.rand;
             double d0 = 0.0625;
 
@@ -185,7 +193,7 @@ public class BlockOre extends BlockArtifice {
             }
         }
 
-        if (this.index == 13) {
+        if (this.index == INDEX_ENDER) {
             for (int i = 0; i < 4; i++) {
                 double dx = x + 0.5 + world.rand.nextDouble() - world.rand.nextDouble();
                 double dy = y + 0.5 + world.rand.nextDouble() - world.rand.nextDouble();

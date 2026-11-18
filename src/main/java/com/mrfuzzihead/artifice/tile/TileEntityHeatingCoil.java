@@ -17,7 +17,10 @@ import cofh.api.energy.IEnergyReceiver;
 
 public class TileEntityHeatingCoil extends TileEntity implements IEnergyReceiver, IHeatProvider {
 
-    private EnergyStorage energyStorage = new EnergyStorage(1600);
+    /** RF buffer, in RF. Unrelated to {@link TileFurnaceWrapper#MAX_HEAT}, which is heat. */
+    private static final int ENERGY_BUFFER = 1600;
+
+    private EnergyStorage energyStorage = new EnergyStorage(ENERGY_BUFFER);
 
     public boolean canUpdate() {
         return true;

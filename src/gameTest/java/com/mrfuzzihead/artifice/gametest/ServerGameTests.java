@@ -21,6 +21,7 @@ import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
@@ -49,6 +50,7 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 import com.mrfuzzihead.artifice.tile.TileEntityHeatingCoil;
 import com.mrfuzzihead.artifice.tile.TileEntityLogic;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.tile.TileFurnaceWrapper;
 import com.mrfuzzihead.artifice.util.BoxContents;
 import com.mrfuzzihead.artifice.util.ComparableItemStack;
 import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
@@ -725,6 +727,22 @@ public final class ServerGameTests {
             site.setFloor(site.x, site.y - 1, site.z, Blocks.stone);
             site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockScaffold, 0);
 
+            // The collision box is inset so a climber does not sink into the scaffold; the climbable face starts just
+            // inside the block (the two constants CODE_REVIEW §7.7 asked to name).
+            AxisAlignedBB box = ArtificeBlocks.blockScaffold
+                .getCollisionBoundingBoxFromPool(world, site.x, site.y, site.z);
+            check("the scaffold has a collision box", box != null);
+            if (box != null) {
+                Block scaffold = ArtificeBlocks.blockScaffold;
+                double inset = 0.125;
+                double dx = (box.minX - site.x) - (scaffold.getBlockBoundsMinX() + inset);
+                double dz = (box.minZ - site.z) - (scaffold.getBlockBoundsMinZ() + inset);
+                double dh = (box.maxY - box.minY) - (scaffold.getBlockBoundsMaxY() - scaffold.getBlockBoundsMinY());
+
+                check("the collision box is inset by an eighth of a block", Math.abs(dx) < 1e-6 && Math.abs(dz) < 1e-6);
+                check("the collision box keeps the block's height", Math.abs(dh) < 1e-6);
+            }
+
             checkEquals(
                 "scaffold on a solid floor stays",
                 ArtificeBlocks.blockScaffold,
@@ -1316,6 +1334,23 @@ public final class ServerGameTests {
                 }
             }
             check("coil heat reached at least one furnace", burnTime > 0);
+
+            // The per-furnace cap, through the wrapper the coil actually talks to. A furnace that is already full
+            // must refuse heat rather than lose it, and one item's worth is what MAX_HEAT buys at the default rate.
+            TileEntityFurnace capped = (TileEntityFurnace) world.getTileEntity(
+                site.x + ForgeDirection.UP.offsetX,
+                site.y + ForgeDirection.UP.offsetY,
+                site.z + ForgeDirection.UP.offsetZ);
+            if (capped != null) {
+                TileFurnaceWrapper wrapper = new TileFurnaceWrapper(capped);
+                checkEquals("the wrapper reports the constant cap", TileFurnaceWrapper.MAX_HEAT, wrapper.getMaxHeat());
+                check("a furnace can take heat", wrapper.receiveHeat(TileFurnaceWrapper.MAX_HEAT) > 0);
+                checkEquals("a full furnace takes no more heat", 0, wrapper.receiveHeat(100));
+                checkEquals(
+                    "the cap is in RF, so the heat reads back as MAX_HEAT",
+                    TileFurnaceWrapper.MAX_HEAT,
+                    wrapper.getHeat());
+            }
             check("coil drains RF while heating", coil.getEnergyStored(ForgeDirection.UP) < 1600);
 
             // CODE_REVIEW 5.4: the neighbour helpers indexed the side array twice, so a random subset of the six

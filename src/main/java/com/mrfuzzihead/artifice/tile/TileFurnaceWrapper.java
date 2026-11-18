@@ -58,8 +58,15 @@ public class TileFurnaceWrapper implements IHeatReceiver {
         return this.furnace.furnaceBurnTime * ArtificeConfig.RFperFurnaceHeat;
     }
 
+    /**
+     * 1600 RF, which at the default 8 RF per burn tick is 200 burn ticks - one item smelted, and the same budget a
+     * vanilla piece of coal carries. It is a cap in RF, not in ticks, so a pack that changes the exchange rate
+     * changes how much smelting the cap buys.
+     */
+    public static final int MAX_HEAT = 1600;
+
     @Override
     public int getMaxHeat() {
-        return 1600;
+        return MAX_HEAT;
     }
 }
