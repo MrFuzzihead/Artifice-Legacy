@@ -1,9 +1,11 @@
 package com.mrfuzzihead.artifice.gametest;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -44,6 +46,7 @@ import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.block.world.BlockRock;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
+import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
 import com.mrfuzzihead.artifice.gui.ArtificeCreativeTab;
 import com.mrfuzzihead.artifice.item.DispenserBehaviorSledge;
@@ -61,8 +64,14 @@ import com.mrfuzzihead.artifice.util.ComparableItemStack;
 import com.mrfuzzihead.artifice.util.ComparableItemStackNBT;
 import com.mrfuzzihead.artifice.util.NameMetaPair;
 import com.mrfuzzihead.artifice.util.OreDictFallback;
+import com.mrfuzzihead.artifice.world.ISuspendableGen;
+import com.mrfuzzihead.artifice.world.WorldGenCave;
+import com.mrfuzzihead.artifice.world.WorldGenCluster;
+import com.mrfuzzihead.artifice.world.WorldGenDesert;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
+import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
+import cofh.api.world.IFeatureGenerator;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 
 /**
@@ -107,6 +116,7 @@ public final class ServerGameTests {
         run("lamp stability", ServerGameTests::checkLampStability);
         run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("ore layer generation", ServerGameTests::checkLayerGeneration);
+        run("worldgen fingerprints", ServerGameTests::checkWorldGenFingerprints);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -1362,6 +1372,155 @@ public final class ServerGameTests {
             "the layer leaves blocks that are not stone types alone",
             Blocks.dirt,
             world.getBlock(x0 + 9, y, z0));
+    }
+
+    // ---------------------------------------------------------------------------------------------------------
+    // Worldgen determinism: the safety net for the §7.1 refactor
+    // ---------------------------------------------------------------------------------------------------------
+
+    private static final int GEN_CHUNK_X = 6000;
+    private static final int GEN_CHUNK_Z = 6000;
+    private static final int GEN_MIN_Y = 0;
+    private static final int GEN_MAX_Y = 64;
+
+    /**
+     * What the four suspendable generators place, recorded as a fingerprint of the resulting blocks.
+     *
+     * <p>
+     * §7.1 merges four near-identical generators into one, which is a refactor of worldgen with no observable contract
+     * to test against: the output is "some blobs". So the contract is made here - for a fixed seed, a fixed band of
+     * stone and a fixed chunk, the placed blocks must not change. The band is filled first so the outcome depends on
+     * the seed and not on whatever terrain the test world happens to have generated.
+     * </p>
+     *
+     * <p>
+     * If a fingerprint changes deliberately, record the new value here and say why in the commit; if it changes
+     * without a reason, the refactor broke worldgen.
+     * </p>
+     */
+    private static void checkWorldGenFingerprints() {
+        World world = overworld();
+
+        // Uranium clusters replace stone anywhere in their band.
+        prepareBand(world, Blocks.stone, 64, 64);
+        checkEquals(
+            "uranium cluster fingerprint",
+            "fa2037f9472f08c2",
+            runAndFingerprint(world, new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 7, 100), 11L, 64));
+
+        // Sulfur only generates beside lava or beside sulfur it has already placed, so the band gets a lava floor.
+        prepareBand(world, Blocks.stone, 127, 127);
+        setStripes(world, 4, Blocks.lava);
+        checkEquals(
+            "sulfur deposit fingerprint",
+            "d3a2e8ca7b290738",
+            runAndFingerprint(world, new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 64, 100), 12L, 127));
+
+        // Niter replaces sand.
+        prepareBand(world, Blocks.sand, 127, 127);
+        checkEquals(
+            "niter deposit fingerprint",
+            "1d32f098adb86d8d",
+            runAndFingerprint(world, new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 64, 100), 13L, 127));
+
+        // Caves only generate next to something that is not opaque, so the band gets a void layer.
+        prepareBand(world, Blocks.stone, 40, 64);
+        setStripes(world, 4, Blocks.air);
+        checkEquals(
+            "limestone cave fingerprint",
+            "b1e629453493c7c",
+            runAndFingerprint(world, new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 6, 100), 14L, 64));
+    }
+
+    /** Fills a controlled band: everything up to {@code fillTop} is {@code fill}, above it is air. */
+    private static void prepareBand(World world, Block fill, int fillTop, int bandTop) {
+        for (int cx = GEN_CHUNK_X - 1; cx <= GEN_CHUNK_X + 1; cx++) {
+            for (int cz = GEN_CHUNK_Z - 1; cz <= GEN_CHUNK_Z + 1; cz++) {
+                // Generate (and keep) the chunks, so blockExists() is true and nothing suspends on unloaded terrain.
+                world.getChunkFromChunkCoords(cx, cz);
+            }
+        }
+
+        int x0 = (GEN_CHUNK_X - 1) << 4;
+        int z0 = (GEN_CHUNK_Z - 1) << 4;
+        int x1 = (GEN_CHUNK_X + 2) << 4;
+        int z1 = (GEN_CHUNK_Z + 2) << 4;
+
+        for (int x = x0; x < x1; x++) {
+            for (int z = z0; z < z1; z++) {
+                // Two blocks above the hashed band as well: the generators look at their neighbours, and a block at
+                // the top of the band would otherwise see whatever terrain the test world generated there.
+                for (int y = 0; y <= bandTop + 2; y++) {
+                    // Flag 2: no neighbour notifications. The generators write with flag 0, which is part of what is
+                    // being recorded, but the filler must not spend the test's time notifying.
+                    world.setBlock(x, y, z, y <= fillTop ? fill : Blocks.air, 0, 2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Replaces every {@code period}-th layer with {@code block}.
+     *
+     * <p>
+     * The sulfur and cave generators both pick a random y and then look for a block with a particular neighbour (lava
+     * for sulfur, anything non-opaque for a cave), giving up after a handful of tries if they do not find one. One
+     * lava layer in a 128-block band makes that a coin flip on the seed rather than a property of the generator, so
+     * the band gets stripes instead: half of it is a valid candidate.
+     * </p>
+     */
+    private static void setStripes(World world, int period, Block block) {
+        for (int x = (GEN_CHUNK_X - 1) << 4; x < (GEN_CHUNK_X + 2) << 4; x++) {
+            for (int z = (GEN_CHUNK_Z - 1) << 4; z < (GEN_CHUNK_Z + 2) << 4; z++) {
+                for (int y = 0; y <= 130; y += period) {
+                    world.setBlock(x, y, z, block, 0, 2);
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs one generator over the prepared band with a fixed seed, drains the suspendable queue, and hashes the
+     * 3x3 chunk area.
+     */
+    private static String runAndFingerprint(World world, IFeatureGenerator generator, long seed, int bandTop) {
+        generator.generateFeature(new Random(seed), GEN_CHUNK_X, GEN_CHUNK_Z, world, true);
+
+        ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
+        if (queue != null) {
+            for (ISuspendableGen gen : queue) {
+                int guard = 0;
+                while (gen.doGeneration(GEN_CHUNK_X, GEN_CHUNK_Z) && guard++ < 4096) {
+                    // The generator places a few blocks per call and says "false" when it has nothing left.
+                }
+            }
+            queue.clear();
+        }
+
+        return fingerprintOfBand(world, bandTop);
+    }
+
+    private static String fingerprintOfBand(World world, int bandTop) {
+        long hash = 1125899906842597L;
+
+        int x0 = (GEN_CHUNK_X - 1) << 4;
+        int z0 = (GEN_CHUNK_Z - 1) << 4;
+        int x1 = (GEN_CHUNK_X + 2) << 4;
+        int z1 = (GEN_CHUNK_Z + 2) << 4;
+
+        for (int x = x0; x < x1; x++) {
+            for (int z = z0; z < z1; z++) {
+                for (int y = 0; y <= bandTop; y++) {
+                    Block block = world.getBlock(x, y, z);
+                    int meta = world.getBlockMetadata(x, y, z);
+                    String name = Block.blockRegistry.getNameForObject(block);
+                    hash = 31 * hash + (name == null ? 0 : name.hashCode());
+                    hash = 31 * hash + meta;
+                }
+            }
+        }
+
+        return Long.toHexString(hash);
     }
 
     private static void checkAttunedRedstone() {
