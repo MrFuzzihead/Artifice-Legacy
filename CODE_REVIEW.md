@@ -1295,7 +1295,7 @@ Game test: the name is written; a stale numeric id loses to the name; an id-only
 item the pack does not have resolves to null and is left alone instead of throwing; and a name-carrying box yields
 its contents through the crafting handler.
 
-### 9.7 Fluids - **open, waiting on a decision**
+### 9.7 Fluids — **open, waiting on a decision**
 
 `ArtificeFluids` registers `oil`/`fuel`/`creosote`/`bitumen` only if they are not already registered, and
 `ArtificeBlocks` then reuses the existing block if the fluid already has one. Good. But `ArtificeItems` still
@@ -1396,7 +1396,7 @@ Preserved by the refactor (it is a behaviour, not an implementation detail) and 
 rule: hanging a scaffold from the one above it is what a player building downwards would expect. Worth deciding either
 way - the fix is one more direction in the entry check, and the test would then record the opposite.
 
-### 9.12 Rewriting Angelica's render-pass whitelist - **done**
+### 9.12 Rewriting Angelica's render-pass whitelist — **done**
 
 Angelica's `blockCrackFixRenderPassWhitelist` is a list of class-name strings whose default lives in Angelica's jar
 (E.5), and the default still names `shukaro.artifice.block.world.BlockOre`. There is no API to add to it, so a pack
