@@ -919,10 +919,20 @@ variant drops the same item (which is correct).
 
 ### 5.33 `WorldGenCluster`/`WorldGenCave` mutate the generator instance per biome — **P3 (thread safety)**
 
-**Status: not changed.** The concern is real but conditional: 1.7.10 chunk generation runs on the server thread
-unless a mod offloads it, and the fix means threading the chosen block through `ClusterGen`/`CaveGen` - a worldgen
-edit with no test that can catch a mistake. It is better done as part of the §7.1 dedupe, where the two generators
-become one and the mutation disappears by construction.
+**Status: fixed (round 8), and the concern was understated.** It is not only a thread-safety problem. Both
+generators hand their blob to `ArtificeTickHandler`, which resumes it later - a chunk boundary away - and `place()`
+read `WorldGenCluster.this.block` at *that* point. So a blob could be finished with the limestone variant of whichever
+chunk generated in between, on one thread, whenever it crossed a chunk boundary. The field was never just a cache of
+the current chunk's choice; it was state shared between a queued generator and everything that ran after it.
+
+The variant is now a local in `generateFeature` (`Block chosen = this.block`) and a `final` field on the blob, so the
+mutation is gone by construction - the §7.1 dedupe did not need to happen first after all.
+
+Verified two ways, because the placement itself does not change: `checkWorldGenVariantIsolation` constructs a probe
+generator with two different limestone blocks and asserts that after a run which places blocks the generator's own
+field is still the constructed one (at most one of the two can coincide with the variant the biome picks, so one
+assertion is always non-vacuous), and the four worldgen fingerprints from §10.3 are unchanged, which says the blocks
+placed are the same ones as before.
 
 `world/WorldGenCluster.java:95-112` and `world/WorldGenCave.java:109-126` assign `this.block` while choosing a
 limestone variant from the biome. `IFeatureGenerator`s are shared across chunk-generation threads in 1.7.10
@@ -1446,7 +1456,7 @@ update regenerates the wrong value and Artifice ores drop off the whitelist (z-f
 
 Verified end to end by dropping a real `angelica-modules.cfg` (CRLF) naming `BlockOre`, `BlockRock` and
 `shukaro.nodalmechanics` into `run/server/config` and running the in-game suite: two references moved, the other mod's
-package untouched, every other byte identical, `1795/1795` checks green.
+package untouched, every other byte identical, `1803/1803` checks green.
 
 ## 10. Test strategy and coverage analysis
 
@@ -1462,7 +1472,7 @@ package untouched, every other byte identical, `1795/1795` checks green.
   rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip, CRLF and non-ASCII preservation,
   idempotence, absent file), the icon-table subscript clamp (`clampIndex` over -8..23 and both `Integer` extremes),
   and the `@Mod`/`@Instance` agreement.
-* **In-game (1,795 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+* **In-game (1,803 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
@@ -1475,7 +1485,8 @@ package untouched, every other byte identical, `1795/1795` checks green.
   each of the four worldgen generators places for a fixed seed, and the join the Chisel integration always failed:
   every carving-table name resolving to a registered block, and nothing but our rocks and rock slabs in it, the ender
   ore drop through the real `getDrops` path, the attuned frequency index's cost, a seed sweep with a repeat run and a
-  vacuity check per generator, and the frequency index emptied by a real `WorldEvent.Unload`.
+  vacuity check per generator, the limestone variant staying on its own blob, and the frequency index emptied by a
+  real `WorldEvent.Unload`.
 
 ### 10.2 Why the headless number is low, and what to do about it
 

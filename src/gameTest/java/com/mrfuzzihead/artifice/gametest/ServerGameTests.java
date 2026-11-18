@@ -120,6 +120,7 @@ public final class ServerGameTests {
         run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("ore layer generation", ServerGameTests::checkLayerGeneration);
         run("worldgen fingerprints", ServerGameTests::checkWorldGenFingerprints);
+        run("worldgen variant isolation", ServerGameTests::checkWorldGenVariantIsolation);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -1543,6 +1544,76 @@ public final class ServerGameTests {
             label + " repeats its fingerprint after another run",
             pinned,
             runAndFingerprint(world, factory.get(), pinnedSeed, bandTop));
+    }
+
+    /**
+     * CODE_REVIEW 5.33: the limestone variant is chosen per blob, not stored on the feature generator.
+     *
+     * <p>
+     * Both generators picked the variant for a biome by assigning {@code this.block}, and the blob they hand to the
+     * tick handler reads that field when it is <em>resumed</em> - which is a chunk boundary away. So a blob could be
+     * finished with the variant of whichever chunk generated in between, single-threaded as well as not. The variant
+     * is a local passed to the blob now.
+     * </p>
+     *
+     * <p>
+     * The field is {@code protected}, so the probes below read it: after a run that places blocks, the generator's own
+     * block must still be the one it was constructed with. The precondition is asserted too - a run that places
+     * nothing would pass this test while proving nothing, which is exactly how the sulfur fingerprint stayed vacuous.
+     * </p>
+     */
+    private static void checkWorldGenVariantIsolation() {
+        World world = overworld();
+
+        // Two different limestone blocks as the constructed value. The biome picks one variant for a given blob, so
+        // at most one of the two can happen to equal it: one of the assertions below is always non-vacuous, whatever
+        // biome the test world has at this chunk.
+        Block[] constructed = { ArtificeBlocks.blockLimestones[0], ArtificeBlocks.blockLimestones[5] };
+
+        prepareBand(world, Blocks.stone, 64, 64);
+        for (Block block : constructed) {
+            ProbeCluster cluster = new ProbeCluster(block, 0, 10, 40, 8, 100);
+            check(
+                "the cluster probe places something",
+                cluster.generateFeature(new Random(11L), GEN_CHUNK_X, GEN_CHUNK_Z, world, true));
+            check("a cluster does not retarget its own feature generator", cluster.ownBlock() == block);
+        }
+
+        prepareBand(world, Blocks.stone, 40, 64);
+        setStripes(world, 4, Blocks.air);
+        for (Block block : constructed) {
+            ProbeCave cave = new ProbeCave(block, 0, 10, 40, 8, 100);
+            check(
+                "the cave probe places something",
+                cave.generateFeature(new Random(14L), GEN_CHUNK_X, GEN_CHUNK_Z, world, true));
+            check("a cave does not retarget its own feature generator", cave.ownBlock() == block);
+        }
+
+        // The blobs are queued for the tick handler; they belong to this test, not to whatever runs next.
+        clearPendingGenerators(world);
+    }
+
+    /** Reads the {@code protected} block field of the feature generator, which is what 5.33 is about. */
+    private static final class ProbeCluster extends WorldGenCluster {
+
+        private ProbeCluster(Block block, int meta, int minHeight, int maxHeight, int size, int frequency) {
+            super(block, meta, minHeight, maxHeight, size, frequency);
+        }
+
+        private Block ownBlock() {
+            return this.block;
+        }
+    }
+
+    private static final class ProbeCave extends WorldGenCave {
+
+        private ProbeCave(Block block, int meta, int minHeight, int maxHeight, int size, int frequency) {
+            super(block, meta, minHeight, maxHeight, size, frequency);
+        }
+
+        private Block ownBlock() {
+            return this.block;
+        }
     }
 
     /** Fills a controlled band: everything up to {@code fillTop} is {@code fill}, above it is air. */
