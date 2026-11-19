@@ -37,14 +37,19 @@ public class RegistrationInvariantsTest {
         // @Instance value that FML uses for instance injection.
         Assert.assertEquals(mod.modid(), ArtificeCore.modID);
         Assert.assertEquals(mod.name(), ArtificeCore.modName);
-        // The annotation reads the constant now, so this cannot drift - but the constant is what FML reports and what
-        // a pack compares, so pin its value and its shape: "1.7.10R<mod version>" is what the pack expects to see.
-        // Note that mcmod.info does *not* quote this constant: it quotes the gradle token ${modVersion}, which is the
-        // git tag (or a describe string in a dev build). The two are independent, which is CODE_REVIEW 9.13.
+        // The annotation reads the constant now, so this cannot drift - but the constant is the build's git version
+        // (Tags.VERSION, the same token mcmod.info quotes), so pin that it is still the token and not a literal that
+        // was typed in once and left behind. A hardcoded string differs from Tags.VERSION as soon as the build stamps
+        // a different tag, which is the failure this catches.
         Assert.assertEquals(mod.version(), ArtificeCore.modVersion);
-        Assert.assertTrue(
-            "mod version should read 1.7.10R<version>, got " + ArtificeCore.modVersion,
-            ArtificeCore.modVersion.startsWith("1.7.10R") && ArtificeCore.modVersion.length() > "1.7.10R".length());
+        Assert.assertEquals(
+            "the mod version must be the build's git version, not a literal",
+            Tags.VERSION,
+            ArtificeCore.modVersion);
+        Assert.assertFalse(
+            "the git version should not be blank",
+            ArtificeCore.modVersion.trim()
+                .isEmpty());
 
         Mod.Instance instance = findInstanceAnnotation();
         Assert.assertNotNull("@Instance is missing on ArtificeCore.instance", instance);

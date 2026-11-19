@@ -30,7 +30,8 @@ import cpw.mods.fml.common.Mod;
  * The tokens are part of the assertion on purpose. The GTNH convention plugin substitutes {@code ${modId}},
  * {@code ${modName}}, {@code ${modVersion}} and {@code ${minecraftVersion}} in this file; hardcoding any of them here
  * would freeze the value at whatever it was when someone typed it, which is how a jar ends up claiming a name or a
- * version its code does not.
+ * version its code does not. {@code RegistrationInvariantsTest} pins the other half - the mod constant is
+ * {@code Tags.VERSION}, the same token {@code ${modVersion}} expands to - so the two cannot diverge.
  * </p>
  */
 public class ModMetadataTest {

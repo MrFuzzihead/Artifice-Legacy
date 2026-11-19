@@ -47,7 +47,7 @@
 | 31 | 226 tooltip registrations and five copies of the tooltip lookup (§7.5) | refactor | ~~P3~~ done |
 | 32 | Scaffold support scanned a 33³ cube and ran a flood fill per candidate (§6.3) | perf | ~~P3~~ done |
 | 33 | Four ~100-line worldgen blob generators with two drifted differences (§7.1) | refactor | ~~P3~~ done |
-| 34 | The version has two sources that cannot agree: `@Mod` quotes the constant, `mcmod.info` quotes the gradle token (§9.13) | decision | **P3, open** |
+| 34 | The version had two sources that could not agree: `@Mod` quoted a literal, `mcmod.info` quoted the gradle token (§9.13) | decision | ~~P3~~ done |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -1525,31 +1525,41 @@ Verified end to end by dropping a real `angelica-modules.cfg` (CRLF) naming `Blo
 `shukaro.nodalmechanics` into `run/server/config` and running the in-game suite: two references moved, the other mod's
 package untouched, every other byte identical, `1803/1803` checks green.
 
-### 9.13 The version string has two sources — **open (decision)**
+### 9.13 The version string has two sources — **fixed**
 
-`@Mod(version = ...)` reads `ArtificeCore.modVersion`, a Java literal. `mcmod.info` reads the gradle token
-`${modVersion}`, which the GTNH convention plugin fills with the git describe string: a tag on a release build, a
-`<sha>-<branch>+<sha>` describe otherwise. So one jar reports `1.7.10R1.1.4` to FML and, in the build made for this
-branch, `6ed8082-feature-refactors+6ed8082f6e-dirty` to anything that reads `mcmod.info`.
+`@Mod(version = ...)` read `ArtificeCore.modVersion`, a Java literal. `mcmod.info` reads the gradle token
+`${modVersion}`, which the GTNH convention plugin fills from git. So one jar reported `1.7.10R1.1.4` to FML and, in the
+build made for this branch, `6ed8082-feature-refactors+6ed8082f6e-dirty` to anything that reads `mcmod.info`. Both were
+wrong: the literal was stale (upstream's last release was 1.1.5R, so the fork claimed to be *older* than the mod it
+replaces), and no value could ever make the two agree.
 
-Both are wrong, in different ways:
+The fix is the one the reference implementation in this org (Peripherals++) uses: one source. `modVersion` is now
+`Tags.VERSION`, the token the plugin generates, and `mcmod.info` quotes the same token - so the FML log and the mod list
+report the same string by construction. The `1.7.10R<version>` prefix and the assertion that pinned it are gone; there
+is nothing left to keep in step, and `RegistrationInvariantsTest` now asserts the constant *is* `Tags.VERSION`, which
+fails the moment someone types a literal back in.
 
-* The literal is stale. Upstream's last release was 1.1.5R, so the fork reports a *lower* version than the mod it
-  replaces - visible in the FML log and to any pack tooling that compares versions.
-* The token is a different string on every commit, and on a release build a different *format* from the literal
-  (`1.1.6` versus `1.7.10R1.1.6`).
+What the version is in each state, measured with `./gradlew injectTags` rather than assumed:
 
-Note what is **not** at stake: in FML 1.7.10 the `requiredMods`, `dependencies` and `useDependencyInformation` fields of
-`mcmod.info` are parsed into `ModMetadata` and read by nothing - `javap` over the 1.7.10 Forge jar shows `ModMetadata`
-as the only class that references them. Dependency ordering comes from the `@Mod` annotation alone, so filling those
-fields in is documentation, not load behaviour.
+| Repository state | `Tags.VERSION` |
+|---|---|
+| HEAD is tagged (`git tag 1.1.6`) | `1.1.6` — the tag, verbatim, annotated or lightweight |
+| Commits past a reachable tag | `1.1.6-<branch>.<n>+<shortSha>` |
+| No tag reachable | `<shortSha>` |
+| Uncommitted changes | the above with `-dirty` appended |
 
-The reference implementation in this org (Peripherals++) has a single source: `Reference.VERSION = Tags.VERSION`, the
-same token `mcmod.info` uses, so the two cannot disagree. Doing the same here is a two-line change - `modVersion =
-Tags.VERSION`, and drop the `1.7.10R` prefix assertion in `RegistrationInvariantsTest` - but it changes what FML reports
-for every build, dev builds included, which is why it is a decision rather than a cleanup.
+So **tagging is now load-bearing**: a release build reports the tag, and anything that compares versions sees a real
+one. An untagged build reports a describe string, which sorts unpredictably - acceptable for a dev jar, which is what it
+is.
 
-Until then: bump the literal on release (`1.7.10R1.1.6`), and expect the mod list to show the tag instead.
+One consequence worth stating because it cannot be undone cheaply: the `1.7.10R` prefix is gone, so a pack that parses
+the old format sees a different string. Nothing in the pack does (Appendix E.7), and the alternative - keeping a prefix
+no other mod in the ecosystem uses - is what made the two sources disagree in the first place.
+
+Note what is **not** at stake in any of this: in FML 1.7.10 the `requiredMods`, `dependencies` and
+`useDependencyInformation` fields of `mcmod.info` are parsed into `ModMetadata` and read by nothing - `javap` over the
+1.7.10 Forge jar shows `ModMetadata` as the only class that references them. Dependency ordering comes from the `@Mod`
+annotation alone, so filling those fields in is documentation, not load behaviour.
 
 ## 10. Test strategy and coverage analysis
 

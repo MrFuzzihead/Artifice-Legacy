@@ -88,6 +88,21 @@ the crafting and smelting recipes, the ore dictionary fallbacks, and the compati
 Every test that guards a bug fix was verified to fail against the code before the fix; `CODE_REVIEW.md` records which,
 and where a first attempt at a test passed for the wrong reason.
 
+### Releasing
+
+The version is the git tag the jar was built from. `ArtificeCore.modVersion` is `Tags.VERSION` and `mcmod.info` quotes
+the same token, so both are substituted from the same value at build time — there is no number to edit anywhere:
+
+```sh
+git tag -a 1.1.6 -m "1.1.6"
+git push origin 1.1.6
+```
+
+`release-tags.yml` runs on any tag and attaches the built jar to a GitHub release. An untagged build reports a
+describe string instead (`<shortsha>-<branch>.<n>+<shortsha>`), which is right for a dev jar and wrong for anything a
+pack compares, so tag before you publish. The old `1.7.10R` prefix is gone with the literal that carried it: the tag is
+the whole version.
+
 ## Configuration
 
 `config/Artifice.cfg`, generated on first launch, 149 keys in twelve categories. The ones worth knowing:
