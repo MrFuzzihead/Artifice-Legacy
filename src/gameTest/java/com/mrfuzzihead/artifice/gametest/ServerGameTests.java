@@ -30,6 +30,7 @@ import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraftforge.common.BiomeDictionary;
 import net.minecraftforge.common.util.ForgeDirection;
 import net.minecraftforge.oredict.OreDictionary;
 
@@ -70,6 +71,7 @@ import com.mrfuzzihead.artifice.world.ISuspendableGen;
 import com.mrfuzzihead.artifice.world.WorldGenCave;
 import com.mrfuzzihead.artifice.world.WorldGenCluster;
 import com.mrfuzzihead.artifice.world.WorldGenDesert;
+import com.mrfuzzihead.artifice.world.WorldGenFlowers;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
 import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
@@ -120,6 +122,7 @@ public final class ServerGameTests {
         run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("ore layer generation", ServerGameTests::checkLayerGeneration);
         run("worldgen fingerprints", ServerGameTests::checkWorldGenFingerprints);
+        run("flora worldgen clock", ServerGameTests::checkFloraIgnoresTheWorldClock);
         run("worldgen variant isolation", ServerGameTests::checkWorldGenVariantIsolation);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
@@ -129,6 +132,7 @@ public final class ServerGameTests {
         run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
+        run("flora day/night", ServerGameTests::checkFloraDayNight);
         run("logic redstone", ServerGameTests::checkLogicRedstone);
         run("attuned redstone", ServerGameTests::checkAttunedRedstone);
         run("attuned frequency index cost", ServerGameTests::checkFrequencyIndexCost);
@@ -978,6 +982,22 @@ public final class ServerGameTests {
                     ArtificeBlocks.blockScaffold.canBlockStay(world, bx + i, cy, bz));
             }
 
+            // CODE_REVIEW §9.11: a column can be built downwards. The block above now counts as the neighbour that
+            // opens the support search, so a scaffold hung under an anchored one stays, and drops with its anchor.
+            int dx = site.x + 16;
+            site.setBlock(dx + 1, cy - 1, cz, Blocks.stone, 0); // ground for the anchor
+            site.setBlock(dx + 1, cy, cz, ArtificeBlocks.blockScaffold, 0); // anchored
+            site.setBlock(dx, cy, cz, ArtificeBlocks.blockScaffold, 0); // beside it
+            site.setBlock(dx, cy - 1, cz, ArtificeBlocks.blockScaffold, 0); // its only neighbour is the one above
+            check(
+                "a scaffold under an anchored column stays",
+                ArtificeBlocks.blockScaffold.canBlockStay(world, dx, cy - 1, cz));
+
+            world.setBlockToAir(dx + 1, cy - 1, cz);
+            check(
+                "and drops once nothing in the column is anchored",
+                !ArtificeBlocks.blockScaffold.canBlockStay(world, dx, cy - 1, cz));
+
             // Remove the anchor's ground: now nothing within reach is anchored and the block must go.
             world.setBlockToAir(cx, cy - 1, cz + 1);
             check(
@@ -1272,6 +1292,43 @@ public final class ServerGameTests {
         }
     }
 
+    /**
+     * CODE_REVIEW §9.5. Open or closed is the block's own answer, taken from the light level in {@code updateTick} -
+     * which is why worldgen no longer reads the world clock to decide it. The clock read made generation depend on
+     * what time of day a chunk was populated, and it means nothing in a dimension whose time never moves.
+     */
+    private static void checkFloraDayNight() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        try {
+            int x = site.x;
+            int y = site.y;
+            int z = site.z;
+
+            // Dirt rather than water: BlockLotus#updateTick answers the light question and nothing else, and the
+            // placement rules are covered by the metadata test. Water would also flow out of the touched set.
+            site.setFloor(x, y - 1, z, Blocks.dirt);
+            site.setBlock(x, y, z, ArtificeBlocks.blockLotus, 0);
+            checkEquals("the lotus starts open", 0, world.getBlockMetadata(x, y, z));
+
+            // Roof it. No sky light and no block light, so the block's own tick closes it.
+            site.setBlock(x, y + 1, z, Blocks.stone, 0);
+            checkEquals("a roofed lotus has no light at all", 0, world.getBlockLightValue(x, y, z));
+            ArtificeBlocks.blockLotus.updateTick(world, x, y, z, world.rand);
+            checkEquals("the lotus closes in the dark", 1, world.getBlockMetadata(x, y, z));
+
+            // Light it with a glowstone: block light, so the result cannot depend on the time of day either.
+            site.setBlock(x, y + 1, z, Blocks.air, 0);
+            site.setBlock(x + 1, y, z, Blocks.glowstone, 0);
+            check("the lotus is lit", world.getBlockLightValue(x, y, z) >= 8);
+            ArtificeBlocks.blockLotus.updateTick(world, x, y, z, world.rand);
+            checkEquals("the lotus opens in the light", 0, world.getBlockMetadata(x, y, z));
+        } finally {
+            site.clear();
+        }
+    }
+
     private static void checkLogicRedstone() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1516,6 +1573,106 @@ public final class ServerGameTests {
             64,
             "795a4ed4e460244b");
 
+    }
+
+    /**
+     * CODE_REVIEW §9.5. Generated lotus metadata used to be read off the world clock, so the same chunk populated at
+     * 2000 and at 14000 produced different blocks, and a dimension whose time never moves got whichever state the
+     * clock happened to imply. The chunk is planted twice with the same seeds at two different times: the open lotus
+     * subtype (3) must be what lands both times, and never the closed one (4), which is what updateTick decides from
+     * the light level instead.
+     *
+     * <p>
+     * Two traps here, both of which the first version of this test walked into. The clock only ever decided the
+     * <em>lotus</em> subtype, so a band of bluebells passes while proving nothing - hence the "no closed lotuses"
+     * assertions rather than a bare fingerprint. And {@code WorldGenFlowers} only plants lotuses in a mountain biome
+     * (the plains band the other worldgen tests use can only ever get bluebells and irises), so this looks up a
+     * mountain chunk rather than reusing chunk 6000,6000.
+     * </p>
+     */
+    private static void checkFloraIgnoresTheWorldClock() {
+        World world = overworld();
+        int[] chunk = findChunkInBiome(world, BiomeDictionary.Type.MOUNTAIN);
+        check("there is a mountain chunk to plant lotuses in", chunk != null);
+        if (chunk == null) return;
+
+        long previous = world.getWorldTime();
+
+        try {
+            world.setWorldTime(2000L);
+            int[] day = plantLotuses(world, chunk[0], chunk[1]);
+
+            world.setWorldTime(14000L);
+            int[] night = plantLotuses(world, chunk[0], chunk[1]);
+
+            check("the lotus band is not empty (day " + day[0] + ", night " + night[0] + ")", day[0] > 0);
+            checkEquals("midday plants no closed lotuses", 0, day[1]);
+            checkEquals("midnight plants no closed lotuses either", 0, night[1]);
+            checkEquals("the same seeds plant the same lotuses", day[0], night[0]);
+        } finally {
+            world.setWorldTime(previous);
+        }
+    }
+
+    /**
+     * Flattens one chunk to a grass floor, plants over it, and returns {@code [open, closed]} lotus counts. One roll
+     * picks a single flora type for all of its placements and bails out thirty percent of the time, so a handful of
+     * rolls would not be sure to include a lotus.
+     */
+    private static int[] plantLotuses(World world, int chunkX, int chunkZ) {
+        int x0 = chunkX << 4;
+        int z0 = chunkZ << 4;
+
+        // The generator plants at getHeightValue(), so the terrain has to be flat and low. Flag 2: no neighbour
+        // notifications and no light updates for a quarter of a million filler blocks.
+        for (int x = x0; x < x0 + 16; x++) {
+            for (int z = z0; z < z0 + 16; z++) {
+                for (int y = 0; y < 256; y++) {
+                    world.setBlock(x, y, z, y < 64 ? Blocks.grass : Blocks.air, 0, 2);
+                }
+            }
+        }
+
+        clearPendingGenerators(world);
+        WorldGenFlowers flowers = new WorldGenFlowers();
+        for (int i = 0; i < 24; i++) {
+            flowers.generateFeature(new Random(100L + i), chunkX, chunkZ, world, true);
+        }
+        clearPendingGenerators(world);
+
+        int open = 0;
+        int closed = 0;
+        for (int x = x0; x < x0 + 16; x++) {
+            for (int z = z0; z < z0 + 16; z++) {
+                for (int y = 0; y < 256; y++) {
+                    if (world.getBlock(x, y, z) != ArtificeBlocks.blockFlora) continue;
+                    int meta = world.getBlockMetadata(x, y, z);
+                    if (meta == 3) {
+                        open++;
+                    } else if (meta == 4) {
+                        closed++;
+                    }
+                }
+            }
+        }
+
+        return new int[] { open, closed };
+    }
+
+    /** Biome lookup needs no chunk load, so this can search a wide ring cheaply. */
+    private static int[] findChunkInBiome(World world, BiomeDictionary.Type type) {
+        for (int radius = 0; radius <= 96; radius++) {
+            for (int cx = -radius; cx <= radius; cx++) {
+                for (int cz = -radius; cz <= radius; cz++) {
+                    if (Math.max(Math.abs(cx), Math.abs(cz)) != radius) continue;
+                    if (BiomeDictionary.isBiomeOfType(world.getBiomeGenForCoords((cx << 4) + 8, (cz << 4) + 8), type)) {
+                        return new int[] { cx, cz };
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -2011,6 +2168,33 @@ public final class ServerGameTests {
                 4242,
                 stack.getTagCompound()
                     .getInteger("charge"));
+
+            // CODE_REVIEW 5.27: the craft buys the capacity, not a tank of RF. The recipe used to stamp full
+            // capacity on its output *and* onBlockPlacedBy filled any untagged stack, so every crafted battery
+            // arrived full - one craft was the whole point of the machine, for free.
+            if (ArtificeConfig.nuclearBatteryRecipe) {
+                ItemStack crafted = recipeOutput(Item.getItemFromBlock(ArtificeBlocks.blockNuclearBattery));
+                check("the battery has a recipe", crafted != null);
+                if (crafted != null) {
+                    check("the crafted battery ships empty", crafted.getTagCompound() == null);
+                }
+            }
+
+            battery.setEnergy(5000);
+            ArtificeBlocks.blockNuclearBattery.onBlockPlacedBy(
+                world,
+                site.x,
+                site.y,
+                site.z,
+                null,
+                new ItemStack(ArtificeBlocks.blockNuclearBattery));
+            checkEquals(
+                "an untagged stack does not change what the battery holds",
+                5000,
+                battery.getEnergyStored(ForgeDirection.UP));
+
+            ArtificeBlocks.blockNuclearBattery.onBlockPlacedBy(world, site.x, site.y, site.z, null, stack);
+            checkEquals("a tagged stack transfers its charge", 4242, battery.getEnergyStored(ForgeDirection.UP));
         } finally {
             site.clear();
         }
@@ -2384,6 +2568,15 @@ public final class ServerGameTests {
         check("the sickle has a recipe", hasRecipeOutput(recipes, ArtificeItems.itemSickleWood));
         check("coins have a recipe", hasRecipeOutput(recipes, ArtificeItems.itemCoin));
         check("upgrades have a recipe", hasRecipeOutput(recipes, ArtificeItems.itemUpgrade));
+    }
+
+    private static ItemStack recipeOutput(Item item) {
+        for (IRecipe recipe : CraftingManager.getInstance()
+            .getRecipeList()) {
+            ItemStack output = recipe.getRecipeOutput();
+            if (output != null && output.getItem() == item) return output;
+        }
+        return null;
     }
 
     private static boolean hasRecipeOutput(List<IRecipe> recipes, Item item) {

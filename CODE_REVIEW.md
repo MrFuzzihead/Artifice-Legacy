@@ -773,8 +773,9 @@ to prove the clamps do not accumulate. Against unclamped code, the divisor test 
 
 The battery's missing charging path (§5.27) is untouched - see there.
 
-Also: the battery has **no charging path** — `updateEntity` only ever extracts. The only energy it will ever hold
-is the `charge` NBT stamped on the crafted item (§5.27). Worth deciding whether that is intended.
+Also: the battery has **no charging path** — `updateEntity` only ever extracts. The only energy it held was the
+`charge` NBT stamped on the crafted item, which is now gone, so §5.27 is what makes that gap visible rather than
+cosmetic.
 
 ### 5.22 `ArtificeRegistry` logs through a possibly-null logger — **P2**
 
@@ -854,8 +855,17 @@ helmet, 0 on the chestplate. Old code: 16 and 4 - the random pick hit an unencha
 recharge, so this is the *only* source). If that is intended as "a battery comes pre-charged", fine, but then the
 capacity default and the recipe cost should be revisited; if not, drop the NBT from the recipe output.
 
-**Status: open, waiting on a decision.** The recipe still stamps the full capacity. Whichever way it goes, the in-game
-battery test already reads the crafted stack's NBT, so the change is two lines with a test in place.
+**Status: fixed.** The recipe output carries no charge, and - the half that made the recipe stamping matter in the
+first place - `BlockNuclearBattery.onBlockPlacedBy` no longer falls back to full capacity for an untagged stack, it
+only transfers a charge the stack actually names. So a crafted battery is placed empty, a battery broken and replaced
+keeps what it had (`removedByPlayer` writes the tag), and the creative-tab stack is still full because it *is* tagged.
+The furnace-charging path §5.21 added is now the way a battery gets filled.
+
+Before: one craft, 1,000,000,000 RF, no charging needed. After: the craft buys 1 GFE of capacity, and the reactor
+feeds it.
+
+In-game: the recipe output has no compound; placing an untagged stack over a battery holding 5000 leaves it at 5000
+(it used to jump to 1,000,000,000); a tagged stack transfers its charge.
 
 ### 5.28 `BlockFrameGlassWall` / `BlockFrameScaffold` `getIcon(IBlockAccess)` mismatch — **P3**
 
@@ -1038,7 +1048,7 @@ attempts at the flood fill were wrong in ways I would not have reasoned out:
 
 * **bounding the traversal by the overhang breaks a ring** - an anchor within reach can be connected only through
   blocks outside it, which is why the old code bounded the distance check and not the search;
-* **the walk may only start if one of the five sides is the same tier, but once started it covers the whole
+* **the walk may only start if one of the six neighbours is the same tier, but once started it covers the whole
   component** - including through the block above. The old code's two halves disagreed about that, and the test says
   so.
 
@@ -1306,11 +1316,26 @@ frame of its tier. Asserted in-game alongside the frame table.
 
 ### 9.5 `BlockFlora` and `BlockLotus` day/night logic uses `getWorldTime()`
 
-`WorldGenFlowers` writes the open/closed lotus metadata based on `world.getWorldTime() > 12000L`, and
-`BlockLotus.updateTick` flips it on light level. On a world with a fixed time (e.g. a "permanent day" dimension)
-the generation state is arbitrary. Cosmetic.
+`WorldGenFlowers` and `WorldGenLily` wrote the open/closed lotus metadata based on `world.getWorldTime() > 12000L`,
+while `BlockLotus.updateTick` flips it on light level. On a world with a fixed time (e.g. a "permanent day"
+dimension) the generation state was arbitrary - and worse, a clock read in worldgen makes the result depend on *when*
+a chunk was populated, which is a determinism bug rather than a cosmetic one.
 
-**Status: open (cosmetic).** `WorldGenFlowers` still branches on `world.getWorldTime() > 12000L`.
+**Status: fixed.** Both generators place the open form and nothing else; `updateTick` closes it on the next tick if
+the light there is below 8, which is the rule it already owned. No worldgen path reads the clock now.
+
+In-game, and it took three tries to make this a real test:
+
+* a fingerprint of the band at 2000 versus 14000 is the shape of it, but the first version passed against the old
+  code, because the clock only ever decided the **lotus** subtype and the band was all bluebells (vacuity again);
+* `WorldGenFlowers` only plants lotuses in a **mountain** biome, so the plains band the other worldgen tests use can
+  never contain one - the test looks up a mountain chunk instead;
+* it flattens that chunk, plants 24 rolls at 2000, re-flattens, plants the same 24 rolls at 14000, and asserts the
+  open count matches and the closed count is zero both times. Against the old code the night run gives 25 closed and
+  0 open.
+
+`BlockLotus`'s own light rule is pinned in-game too (`flora day/night`): roofed, no light at all, `updateTick` closes
+it; a glowstone beside it (block light, so nothing depends on the time of day) opens it again.
 
 ### 9.6 `ItemBox` stores numeric item ids
 
@@ -1426,9 +1451,18 @@ same block and tier; the block directly above is not one of them. So an anchored
 downwards - the new block has an anchored neighbour one block up, and that is not enough.
 
 Preserved by the refactor (it is a behaviour, not an implementation detail) and pinned by
-`BlockFrameScaffoldSupportTest.aBlockIsNotSupportedByTheBlockDirectlyAboveIt`. It reads like an oversight rather than a
-rule: hanging a scaffold from the one above it is what a player building downwards would expect. Worth deciding either
-way - the fix is one more direction in the entry check, and the test would then record the opposite.
+`BlockFrameScaffoldSupportTest.aBlockIsNotSupportedByTheBlockDirectlyAboveIt`. It read like an oversight rather than a
+rule: hanging a scaffold from the one above it is what a player building downwards would expect.
+
+**Status: fixed, the other way.** The entry check now asks all six neighbours, so a column can be built downwards from
+an anchored scaffold and drops with it when the anchor's ground goes. This is the one intended difference from the old
+algorithm, and the support test says so where it matters:
+
+* the transcribed reference (`referenceCheckStay`) gained `UP` and nothing else, so the 900-case differential sweep
+  still compares like with like;
+* `aBlockIsSupportedByTheBlockDirectlyAboveIt` and `anyNeighbourOpensTheSearch` replace the two tests that pinned the
+  old rule, and each of them fails against the five-direction code (verified);
+* in-game: a scaffold placed under an anchored one stays, and drops once nothing in the column is anchored.
 
 ### 9.12 Rewriting Angelica's render-pass whitelist — **done**
 
@@ -1473,13 +1507,19 @@ package untouched, every other byte identical, `1803/1803` checks green.
   metadata-table invariants, the Chisel carving table (names, groups, metadata forms and order, asserted as literals
   rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip, CRLF and non-ASCII preservation,
   idempotence, absent file), the icon-table subscript clamp (`clampIndex` over -8..23 and both `Integer` extremes),
-  and the `@Mod`/`@Instance` agreement.
-* **In-game (1,803 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+  the scaffold support predicate against a transcription of the algorithm it replaced (with §9.11's sixth direction
+  as the one recorded difference), the metadata-table invariants, the Chisel carving table (names, groups, metadata
+  forms and order, asserted as literals rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip,
+  CRLF and non-ASCII preservation, idempotence, absent file), the icon-table subscript clamp (`clampIndex` over
+  -8..23 and both `Integer` extremes), and the `@Mod`/`@Instance` agreement.
+* **In-game (1,819 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
-  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, and the
-  two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an echoing neighbour), the
+  box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, the
+  battery's crafted-empty and untagged-placement rules, the lotus open/closed tick, worldgen determinism for the flora
+  generator at two world times, the two neighbour-update tests (a lamp that settles, a detector that stops pulsing next
+  to an echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
   collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen

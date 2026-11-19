@@ -107,12 +107,14 @@ public class BlockNuclearBattery extends Block implements ITileEntityProvider {
         TileEntity te = world.getTileEntity(x, y, z);
         if (te instanceof TileEntityNuclearBattery) {
             TileEntityNuclearBattery teb = (TileEntityNuclearBattery) te;
+            // Only a stack that says how much it holds transfers a charge. The fallback used to be "fill it up",
+            // which combined with the recipe's stamped NBT to make every crafted battery arrive full - one craft
+            // was a gigawatt-hour from nothing, and the machine had nothing left to do (CODE_REVIEW 5.27). A fresh
+            // tile starts empty, which is what an untagged stack now places.
             if (stack.hasTagCompound()) {
                 teb.setEnergy(
                     stack.getTagCompound()
                         .getInteger("charge"));
-            } else {
-                teb.setEnergy(ArtificeConfig.nuclearBatteryCapacity);
             }
         }
     }

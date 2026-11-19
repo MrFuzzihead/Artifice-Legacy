@@ -4,7 +4,6 @@ import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.FurnaceRecipes;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.oredict.RecipeSorter;
 import net.minecraftforge.oredict.RecipeSorter.Category;
@@ -207,13 +206,12 @@ public class ArtificeRecipes {
         }
 
         if (ArtificeConfig.nuclearBatteryRecipe) {
-            ItemStack stack = new ItemStack(ArtificeBlocks.blockNuclearBattery, 1, 0);
-            stack.setTagCompound(new NBTTagCompound());
-            stack.getTagCompound()
-                .setInteger("charge", ArtificeConfig.nuclearBatteryCapacity);
+            // The output carries no charge NBT: one craft buys the capacity, not a full tank (CODE_REVIEW 5.27). A
+            // battery *with* a charge tag is still honoured on placement, which is what the creative-tab stack and a
+            // picked-up battery are.
             GameRegistry.addRecipe(
                 new ShapedOreRecipe(
-                    stack,
+                    new ItemStack(ArtificeBlocks.blockNuclearBattery, 1, 0),
                     new Object[] { "CRC", "PUP", "CWC", 'C', "cobblestone", 'R', Blocks.redstone_block, 'P',
                         Blocks.piston, 'U', "blockUranium", 'W', Items.water_bucket }));
         }

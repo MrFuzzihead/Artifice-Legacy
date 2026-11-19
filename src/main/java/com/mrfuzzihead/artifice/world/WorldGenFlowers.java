@@ -82,11 +82,13 @@ public class WorldGenFlowers implements IFeatureGenerator {
                             && ArtificeBlocks.blockFlora.canBlockStay(world, x, y, z)
                             && rand.nextInt(10) <= 5) {
                             if (type == 3) {
-                                if (world.getWorldTime() > 12000L) {
-                                    world.setBlock(x, y, z, ArtificeBlocks.blockFlora, 4, 0);
-                                } else {
-                                    world.setBlock(x, y, z, ArtificeBlocks.blockFlora, 3, 0);
-                                }
+                                // Always the open lotus. The state used to be read off the world clock
+                                // (getWorldTime() > 12000L), which made worldgen depend on what time of day the
+                                // chunk happened to be populated, and means nothing in a dimension with a fixed
+                                // time. The block owns this question: it is setTickRandomly, and updateTick flips
+                                // it to the closed form on its next tick if the light there is below 8
+                                // (CODE_REVIEW 9.5).
+                                world.setBlock(x, y, z, ArtificeBlocks.blockFlora, 3, 0);
                             } else {
                                 world.setBlock(x, y, z, ArtificeBlocks.blockFlora, type, 0);
                             }

@@ -28,8 +28,11 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class BlockFrameScaffold extends BlockFrame {
 
-    private static final ForgeDirection[] sides = new ForgeDirection[] { ForgeDirection.NORTH, ForgeDirection.SOUTH,
-        ForgeDirection.EAST, ForgeDirection.WEST, ForgeDirection.DOWN };
+    /**
+     * The directions a same-block, same-tier neighbour may be in for the support search to start at all. All six:
+     * the block directly above counts, so an anchored column can be extended downwards (CODE_REVIEW §9.11).
+     */
+    private static final ForgeDirection[] entryDirections = ForgeDirection.VALID_DIRECTIONS;
 
     /**
      * How far inside the block the climbable face starts: a climber is only slowed when it is actually against the
@@ -206,26 +209,26 @@ public class BlockFrameScaffold extends BlockFrame {
         // LinkedList.contains and a fresh BlockCoord per neighbour: tens of thousands of block reads and millions of
         // list comparisons for a question with one answer.
         //
-        // Two details keep this the same question the old code asked:
+        // Two details keep this the same question the old code asked, except where §9.11 changed it:
         //
-        // - the search only starts if one of the five sides is the same block and tier, because that is what the old
-        // loop required. The consequence is deliberate and worth knowing: a scaffold is not supported by the block
-        // directly over it, so a column cannot be built downwards from an anchored one. Changing that is a
-        // gameplay decision, not a refactor (see CODE_REVIEW §9.11);
+        // - the search only starts if one of the six neighbours is the same block and tier. It was five - the sides
+        // and below - until §9.11, which deliberately made the block above count so that a column can be built
+        // downwards from an anchored one. That is the only intended difference from the old algorithm, and the
+        // support test's reference copy carries the same sixth direction;
         // - once started, the walk covers the whole connected run, not just what is within the overhang. An anchor
         // within reach can be connected only through blocks outside it (a ring, a U), and the old code found
         // those because isConnected() was unbounded while the distance check was not.
-        boolean touchesASide = false;
-        for (ForgeDirection d : sides) {
+        boolean touchesANeighbour = false;
+        for (ForgeDirection d : entryDirections) {
             if (start.copy()
                 .offset(d.ordinal())
                 .blockEquals(world, block, meta)) {
-                touchesASide = true;
+                touchesANeighbour = true;
                 break;
             }
         }
 
-        if (!touchesASide) {
+        if (!touchesANeighbour) {
             return false;
         }
 
