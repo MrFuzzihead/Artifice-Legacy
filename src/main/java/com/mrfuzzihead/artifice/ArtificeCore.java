@@ -104,7 +104,7 @@ public class ArtificeCore {
      * The mod log does not exist until {@code preInit}, but the Angelica patch runs before that; fall back to a logger
      * under the same name so the early lines still land in the game log.
      */
-    private static Logger modLog() {
+    public static Logger modLog() {
         return logger != null ? logger : LogManager.getLogger(modID);
     }
 

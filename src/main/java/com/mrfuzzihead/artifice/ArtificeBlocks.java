@@ -3,6 +3,7 @@ package com.mrfuzzihead.artifice;
 import java.util.Set;
 
 import net.minecraft.block.Block;
+import net.minecraft.init.Blocks;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.FluidRegistry;
 import net.minecraftforge.oredict.OreDictionary;
@@ -331,18 +332,72 @@ public class ArtificeBlocks {
         }
     }
 
+    /**
+     * The (item, metadata) pairs the rock generators may convert into an Artifice ore: everything the ore dictionary
+     * has under our ore names, which by {@code postInit} is every mod's copper, tin, iron and so on.
+     *
+     * <p>
+     * With {@code Compatibility > Convert Other Mods' Ores} off, only vanilla ore blocks and Artifice's own are
+     * collected (CODE_REVIEW 9.1). Another mod's ore block is its terrain, its drop and whatever bookkeeping it keeps
+     * about it, and this is the only switch that decides whether a blob may rewrite it.
+     * </p>
+     */
     public static void initOreSet() {
         oreSet = new THashSet();
+        int skipped = 0;
 
         for (String s : oreNames) {
-            if (OreDictionaryArbiter.getOres(s) != null) {
-                for (ItemStack stack : OreDictionaryArbiter.getOres(s)) {
-                    if (stack != null) {
-                        oreSet.add(new NameMetaPair(stack.getItem(), stack.getItemDamage()));
-                    }
+            if (OreDictionaryArbiter.getOres(s) == null) {
+                continue;
+            }
+
+            for (ItemStack stack : OreDictionaryArbiter.getOres(s)) {
+                if (stack == null) {
+                    continue;
                 }
+
+                if (!ArtificeConfig.convertOtherModOres && !isVanillaOre(stack) && !isOurOre(stack)) {
+                    skipped++;
+                    continue;
+                }
+
+                oreSet.add(new NameMetaPair(stack.getItem(), stack.getItemDamage()));
             }
         }
+
+        if (!ArtificeConfig.convertOtherModOres) {
+            ArtificeCore.modLog()
+                .info(
+                    "Ore variants: ignoring " + skipped
+                        + " stack(s) registered by other mods; only vanilla and Artifice ore blocks will be converted.");
+        } else {
+            ArtificeCore.modLog()
+                .debug("Ore variants: " + oreSet.size() + " ore stack(s) eligible for conversion, all mods included.");
+        }
+    }
+
+    /** The seven ore blocks vanilla ships. Everything else under an ore name belongs to some mod. */
+    private static boolean isVanillaOre(ItemStack stack) {
+        Block block = Block.getBlockFromItem(stack.getItem());
+        return block == Blocks.coal_ore || block == Blocks.iron_ore
+            || block == Blocks.lapis_ore
+            || block == Blocks.gold_ore
+            || block == Blocks.diamond_ore
+            || block == Blocks.redstone_ore
+            || block == Blocks.emerald_ore;
+    }
+
+    /**
+     * Artifice's own ores: the rock variants, plus the four that are their own block (sulfur, niter, uranium, ender).
+     * They stay convertible when the gate is closed - they are ours, and a blob that meets one should still give it
+     * the surrounding rock's metadata.
+     */
+    private static boolean isOurOre(ItemStack stack) {
+        Block block = Block.getBlockFromItem(stack.getItem());
+        return block != null && (block instanceof BlockOre || block == blockSulfur
+            || block == blockNiter
+            || block == blockUranium
+            || block == blockEnderOre);
     }
 
     public static void registerOreVariants() {

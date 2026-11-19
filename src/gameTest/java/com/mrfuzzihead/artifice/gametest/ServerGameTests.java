@@ -32,16 +32,24 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.BiomeDictionary;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.FluidContainerRegistry;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.oredict.OreDictionary;
 
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
+import com.mrfuzzihead.artifice.ArtificeFluids;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidBitumen;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidCreosote;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidFuel;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidOil;
 import com.mrfuzzihead.artifice.block.frame.BlockFrame;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
@@ -76,6 +84,7 @@ import com.mrfuzzihead.artifice.world.WorldGenLayer;
 import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
 import cofh.api.world.IFeatureGenerator;
+import cofh.core.util.oredict.OreDictionaryArbiter;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
 import cpw.mods.fml.common.registry.GameRegistry;
 
@@ -147,6 +156,8 @@ public final class ServerGameTests {
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
         run("enchantments", ServerGameTests::checkEnchantments);
+        run("fluid buckets", ServerGameTests::checkFluidBuckets);
+        run("ore variant gate", ServerGameTests::checkOreVariantGate);
         // Last, deliberately: it posts a real WorldEvent.Unload for the live overworld, and other mods' handlers for
         // that event are entitled to tear down their own state. Nothing is asserted after this group.
         run("world unload event", ServerGameTests::checkWorldUnloadEvent);
@@ -2865,6 +2876,126 @@ public final class ServerGameTests {
      * it must not be reported as ours.
      * </p>
      */
+    /**
+     * CODE_REVIEW 9.7. A fluid we adopted from another mod keeps that mod's bucket: {@code FluidContainerRegistry} has
+     * no precedence, it returns the first matching container, so two registrations for one fluid make the answer a
+     * matter of mod load order. The rule is "we register a bucket iff we created the fluid", which is one claim in a
+     * pack with BuildCraft and a different claim without it - so this asserts the rule, not a fixed answer.
+     */
+    private static void checkFluidBuckets() {
+        checkFluidBucket(
+            "oil",
+            ArtificeFluids.fluidOil,
+            ArtificeBlocks.blockOil,
+            BlockFluidOil.class,
+            ArtificeItems.bucketOil,
+            0);
+        checkFluidBucket(
+            "fuel",
+            ArtificeFluids.fluidFuel,
+            ArtificeBlocks.blockFuel,
+            BlockFluidFuel.class,
+            ArtificeItems.bucketFuel,
+            1);
+        checkFluidBucket(
+            "creosote",
+            ArtificeFluids.fluidCreosote,
+            ArtificeBlocks.blockCreosote,
+            BlockFluidCreosote.class,
+            ArtificeItems.bucketCreosote,
+            2);
+        checkFluidBucket(
+            "bitumen",
+            ArtificeFluids.fluidBitumen,
+            ArtificeBlocks.blockBitumen,
+            BlockFluidBitumen.class,
+            ArtificeItems.bucketBitumen,
+            3);
+    }
+
+    /**
+     * @param ourBlockClass the fluid block Artifice would have built for this fluid
+     * @see #checkFluidBuckets
+     */
+    private static void checkFluidBucket(String name, Fluid fluid, Block block, Class<?> ourBlockClass,
+        ItemStack bucket, int meta) {
+        check("the " + name + " fluid is registered", fluid != null);
+        if (fluid == null) return;
+
+        // The independent signal: ArtificeBlocks builds a block of its own class only when the fluid arrived without
+        // one, so our class here means we made the fluid. Asking ArtificeFluids.owns() for the expectation would make
+        // this test agree with any answer it is given - the first version did exactly that and passed against a build
+        // where every fluid was treated as adopted.
+        boolean weMadeIt = block != null && block.getClass() == ourBlockClass;
+        boolean isContainer = FluidContainerRegistry.getFluidForFilledItem(bucket) != null;
+
+        checkEquals(name + ": our bucket exists exactly when we created the fluid", weMadeIt, isContainer);
+        checkEquals(name + ": the creative tab offers it on the same rule", weMadeIt, tabHasBucket(meta));
+        checkEquals(name + ": owns() agrees with the block Artifice built", weMadeIt, ArtificeFluids.owns(fluid));
+
+        // Whatever the answer, the metadata has to stay a registered subtype. It is what a bucket already in a save
+        // points at, and CoFH's ItemBase.getRenderPasses dereferences it without a null check.
+        check(
+            name + ": metadata " + meta + " is still a registered subtype",
+            !"item.invalid".equals(bucket.getUnlocalizedName()));
+
+        if (weMadeIt) {
+            ItemStack filled = FluidContainerRegistry.fillFluidContainer(
+                new FluidStack(fluid, FluidContainerRegistry.BUCKET_VOLUME),
+                FluidContainerRegistry.EMPTY_BUCKET);
+            check(
+                name + ": our bucket fills from our fluid",
+                filled != null && filled.getItem() == bucket.getItem() && filled.getItemDamage() == meta);
+        }
+    }
+
+    private static boolean tabHasBucket(int meta) {
+        for (Object entry : ArtificeItems.itemBucket.itemList) {
+            if (entry instanceof Integer && (Integer) entry == meta) return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * CODE_REVIEW 9.1. The gate decides whether another mod's ore block may be rewritten into the Artifice variant for
+     * the rock a blob is generating in. A foreign block registered under one of our ore names is the case: with the
+     * gate open it is eligible, with it closed only vanilla and our own blocks are.
+     *
+     * <p>
+     * Last but one on purpose: it registers an ore that nothing else expected, and takes the global {@code oreSet}
+     * down both branches, so every earlier test runs against the shipped configuration.
+     * </p>
+     */
+    private static void checkOreVariantGate() {
+        ItemStack foreignStack = new ItemStack(Blocks.gold_block);
+        OreDictionary.registerOre("oreCopper", foreignStack);
+        // CoFH caches the dictionary per name and is fed by this call, not by OreDictionary.registerOre.
+        OreDictionaryArbiter.registerOreDictionaryEntry(foreignStack, "oreCopper");
+
+        NameMetaPair foreign = new NameMetaPair(foreignStack.getItem(), foreignStack.getItemDamage());
+        boolean previous = ArtificeConfig.convertOtherModOres;
+
+        try {
+            ArtificeConfig.convertOtherModOres = true;
+            ArtificeBlocks.initOreSet();
+            check("a foreign ore is convertible while the gate is open", ArtificeBlocks.oreSet.contains(foreign));
+
+            ArtificeConfig.convertOtherModOres = false;
+            ArtificeBlocks.initOreSet();
+            check("it is not once the gate is closed", !ArtificeBlocks.oreSet.contains(foreign));
+            check(
+                "vanilla ores still convert with the gate closed",
+                ArtificeBlocks.oreSet.contains(new NameMetaPair(Item.getItemFromBlock(Blocks.iron_ore), 0)));
+            check(
+                "our own ores still convert with the gate closed",
+                ArtificeBlocks.oreSet.contains(new NameMetaPair(ArtificeBlocks.blockOres[0], 0)));
+        } finally {
+            ArtificeConfig.convertOtherModOres = previous;
+            ArtificeBlocks.initOreSet();
+        }
+    }
+
     private static void checkWorldUnloadEvent() {
         World world = overworld();
         TestSite site = TestSite.create(world, 512, 616);

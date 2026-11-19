@@ -1275,9 +1275,18 @@ concrete risks: (a) a pack that counts ores (vein miner, ore-finder tools) sees 
 cascade with CoFH's retrogen. Strongly consider a config flag (`convertOtherModOres`, default on) and a per-ore
 log at debug level.
 
-**Status: open, waiting on a decision.** `initOreSet` still collects every mod's stacks for each `oreNames` entry, and
-`WorldGenLayer`/`WorldGenCluster` still replace them. It is the one remaining item that changes what the world
-generator does to another mod's terrain, which is why it is a decision and not a patch.
+**Status: fixed, gated.** `Compatibility > Convert Other Mods' Ores` (default **true**) decides whether a foreign ore
+block may be converted. The tests are both in the list, so the gate has no live meaning: vanilla ore blocks and
+Artifice's own four always convert (another blob meeting ours should still give it the surrounding rock's metadata),
+and only *another mod's* ore block is gated. Why default true: false would change what new chunks contain in every
+existing pack on update, which is not a thing to do silently.
+
+With the gate closed, `initOreSet` logs `Ore variants: ignoring N stack(s) registered by other mods` once at startup;
+with it open the eligible count goes to debug.
+
+In-game: a foreign block (`gold_block`) registered under `oreCopper` is convertible with the gate open and is not with
+it closed, while iron ore and our own variants survive both. Against the ungated code the "not once the gate is
+closed" assertion fails.
 
 ### 9.2 Ore smelting recipes never register — **fixed**
 
@@ -1289,7 +1298,7 @@ compat improvement in itself.
 
 **Status: fixed on `refactor/1.1.6`** — exactly that move: `registerOreVariants()` is called from `preInit` right
 after `ArtificeBlocks.initBlocks()` and removed from `postInit`. `initOreSet()` (which collects *other* mods' ores)
-stays in `postInit`, where it belongs.
+stays in `postInit`, where it belongs - and became configurable in §9.1.
 
 The in-game test checks all 8 vanilla-mapped ores × 9 rock variants against the smelting registry (72 assertions).
 Against the old ordering it reports "the ore smelting recipes registered at all (1 ores)" - one ore was getting a
@@ -1354,13 +1363,34 @@ Game test: the name is written; a stale numeric id loses to the name; an id-only
 item the pack does not have resolves to null and is left alone instead of throwing; and a name-carrying box yields
 its contents through the crafting handler.
 
-### 9.7 Fluids — **open, waiting on a decision**
+### 9.7 Fluids — **fixed: the mod that made the fluid owns the bucket**
 
 `ArtificeFluids` registers `oil`/`fuel`/`creosote`/`bitumen` only if they are not already registered, and
-`ArtificeBlocks` then reuses the existing block if the fluid already has one. Good. But `ArtificeItems` still
-registers four CoFH buckets and four `FluidContainerRegistry` entries **unconditionally**, so in a pack with
-BuildCraft the player gets two oil buckets with different item names. Consider skipping the bucket registration for
-fluids Artifice did not create.
+`ArtificeBlocks` then reuses the existing block if the fluid already has one. That part was right, but `ArtificeItems`
+registered four CoFH buckets and four `FluidContainerRegistry` entries **unconditionally** - so in a pack with
+BuildCraft the player got two oil buckets and two fuel buckets, and which one a fluid fills into was decided by mod
+load order, because `FluidContainerRegistry.fillFluidContainer` returns the first matching container and neither
+registry has a notion of precedence.
+
+**Status: fixed.** `ArtificeFluids` records which names it registered itself (`created`) and answers `owns(Fluid)`;
+`ArtificeItems` registers a bucket only for a fluid it owns. Three details:
+
+* **All four subtypes stay registered.** The metadata is what a bucket already in a save points at, and CoFH's
+  `ItemBase.getRenderPasses` dereferences the entry for the stack's metadata with no null check - a metadata hole is a
+  client crash, not a missing texture. What a borrowed fluid loses is a bucket that *works*, plus its place in the
+  creative tab (`itemList`), because an oil bucket that cannot hold oil is precisely the confusion being removed.
+* **The rule is generic.** It is "did we create the fluid", not "is it BuildCraft": any fluid another mod registered,
+  now or later, is adopted and keeps its own bucket. The four names are all the mod touches.
+* **One log line.** `Fluids: created [...], adopted from another mod [...]` at startup, so "why does Artifice not have
+  an oil bucket here" is answerable without reading code.
+
+Known edge, left as is: a mod that registers a fluid but no bucket at all leaves that fluid with no bucket, because
+"does another mod's container exist for this fluid" has no API. Every mod that ships a fluid ships a bucket.
+
+Verified in a runtime that has no BuildCraft (all four ours, four buckets, all green) *and* by making `owns` answer
+`false` for everything: sixteen assertions fail, so the test is not tautological - the first version of it was,
+because it took its expectation from `owns()` itself. It now cross-checks `owns()` against the block class
+`ArtificeBlocks` built, which is a separate decision path.
 
 ### 9.8 Feature ideas that fit the existing code
 
@@ -1512,14 +1542,15 @@ package untouched, every other byte identical, `1803/1803` checks green.
   forms and order, asserted as literals rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip,
   CRLF and non-ASCII preservation, idempotence, absent file), the icon-table subscript clamp (`clampIndex` over
   -8..23 and both `Integer` extremes), and the `@Mod`/`@Instance` agreement.
-* **In-game (1,819 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
+* **In-game (1,847 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,
   heating-coil → six-furnace transfer, nuclear-battery charge round-trip, drops, ore smelting recipes,
   box identity and crafting, the sledge dispenser path, recipes, tooltips, enchantment ids, config surface, the
   battery's crafted-empty and untagged-placement rules, the lotus open/closed tick, worldgen determinism for the flora
-  generator at two world times, the two neighbour-update tests (a lamp that settles, a detector that stops pulsing next
-  to an echoing neighbour), the
+  generator at two world times, the bucket-versus-fluid-ownership rule for all four fluids, the ore-variant gate in
+  both positions, the two neighbour-update tests (a lamp that settles, a detector that stops pulsing next to an
+  echoing neighbour), the
   attuned link through real placement (including a transmitter that must not count as its own source), the ore
   layer generator over a real chunk, the box's stack comparison, the furnace wrapper's heat cap, and the scaffold's
   collision box, frame and blast-wall hardness per tier (including the corrupt-metadata clamp), the frozen
@@ -1659,7 +1690,7 @@ File: `config/Artifice.cfg`.
 | `Cluster Generation` | 20 | 3 rock groups × size/height/frequency |
 | `Cave Generation` | 20 | 3 rock groups × size/height/frequency |
 | `Recipes` | 26 | every feature toggle |
-| `Compatibility` | 4 | dimension blacklist, bonemeal, marble/basalt lists |
+| `Compatibility` | 5 | dimension blacklist, bonemeal, other mods' ores, marble/basalt lists |
 | `Compat` | 4 | MFR laser registration |
 | `Upgrades` | 15 | per-enchantment caps |
 | `Enchantments` | 7 | start id + weights |

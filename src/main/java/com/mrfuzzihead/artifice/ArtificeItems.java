@@ -1,9 +1,11 @@
 package com.mrfuzzihead.artifice;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockDispenser;
 import net.minecraft.item.Item.ToolMaterial;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemTool;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidContainerRegistry;
 import net.minecraftforge.oredict.OreDictionary;
 
@@ -100,18 +102,31 @@ public class ArtificeItems {
         bucketFuel = itemBucket.addItem(1, "bucketFuel");
         bucketCreosote = itemBucket.addItem(2, "bucketCreosote");
         bucketBitumen = itemBucket.addItem(3, "bucketBitumen");
-        BucketHandler.registerBucket(ArtificeBlocks.blockOil, 0, bucketOil);
-        BucketHandler.registerBucket(ArtificeBlocks.blockFuel, 0, bucketFuel);
-        BucketHandler.registerBucket(ArtificeBlocks.blockCreosote, 0, bucketCreosote);
-        BucketHandler.registerBucket(ArtificeBlocks.blockBitumen, 0, bucketBitumen);
-        FluidContainerRegistry
-            .registerFluidContainer(ArtificeFluids.fluidOil, bucketOil, FluidContainerRegistry.EMPTY_BUCKET);
-        FluidContainerRegistry
-            .registerFluidContainer(ArtificeFluids.fluidFuel, bucketFuel, FluidContainerRegistry.EMPTY_BUCKET);
-        FluidContainerRegistry
-            .registerFluidContainer(ArtificeFluids.fluidCreosote, bucketCreosote, FluidContainerRegistry.EMPTY_BUCKET);
-        FluidContainerRegistry
-            .registerFluidContainer(ArtificeFluids.fluidBitumen, bucketBitumen, FluidContainerRegistry.EMPTY_BUCKET);
+        registerBucket(0, ArtificeBlocks.blockOil, bucketOil, ArtificeFluids.fluidOil);
+        registerBucket(1, ArtificeBlocks.blockFuel, bucketFuel, ArtificeFluids.fluidFuel);
+        registerBucket(2, ArtificeBlocks.blockCreosote, bucketCreosote, ArtificeFluids.fluidCreosote);
+        registerBucket(3, ArtificeBlocks.blockBitumen, bucketBitumen, ArtificeFluids.fluidBitumen);
         itemCraftKit = new ItemCraftKit();
+    }
+
+    /**
+     * Gives a fluid a bucket, but only if Artifice created that fluid (CODE_REVIEW 9.7).
+     *
+     * <p>
+     * All four subtypes are registered above whatever happens: metadata is what a bucket already sitting in a save
+     * points at, and CoFH's {@code ItemBase.getRenderPasses} dereferences the entry for the stack's metadata, so an
+     * unknown subtype is a client crash rather than a missing texture. What a borrowed fluid does not get is a bucket
+     * that <em>works</em>, and one thing follows from that: it is dropped from the creative tab, because an oil bucket
+     * that cannot hold oil is exactly the confusion this replaces.
+     * </p>
+     */
+    private static void registerBucket(int meta, Block block, ItemStack bucket, Fluid fluid) {
+        if (!ArtificeFluids.owns(fluid)) {
+            itemBucket.itemList.remove(Integer.valueOf(meta));
+            return;
+        }
+
+        BucketHandler.registerBucket(block, 0, bucket);
+        FluidContainerRegistry.registerFluidContainer(fluid, bucket, FluidContainerRegistry.EMPTY_BUCKET);
     }
 }
