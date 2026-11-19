@@ -3,7 +3,7 @@
 	"modList": [{
 		"modid": "${modId}",
 		"name": "${modName}",
-		"description": "TODO: Update me",
+		"description": "Rocks, frames, machines and redstone for 1.7.10: basalt, marble and limestone worldgen, blast walls, scaffolds, coloured lamps, wireless redstone, a nuclear battery and three enchantments.",
 		"version": "${modVersion}",
 		"mcversion": "${minecraftVersion}",
 		"url": "https://github.com/MrFuzzihead/Artifice-Legacy",
@@ -12,13 +12,13 @@
 			"MrFuzzihead",
 			"Shukaro"
 		],
-		"credits": "",
+		"credits": "Original mod by Shukaro; this fork is maintained by MrFuzzihead for the GTNH pack",
 		"logoFile": "",
 		"screenshots": [],
 		"parent": "",
-		"requiredMods": [],
-		"dependencies": [],
+		"requiredMods": ["CoFHCore"],
+		"dependencies": ["CoFHCore"],
 		"dependants": [],
-		"useDependencyInformation": false
+		"useDependencyInformation": true
 	}]
 }

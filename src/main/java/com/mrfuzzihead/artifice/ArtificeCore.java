@@ -48,6 +48,12 @@ import cpw.mods.fml.common.registry.GameRegistry.Type;
  * The annotation reads the constants below rather than repeating them: annotation values must be compile-time
  * constants, and these are. Before, the id, name and version each appeared twice (once here, once as a field) with
  * nothing keeping them in step; {@code RegistrationInvariantsTest} now pins the pair (CODE_REVIEW §8).
+ *
+ * <p>
+ * The version is the one constant that is not a literal: it is {@link Tags#VERSION}, which the GTNH convention plugin
+ * fills from the git tag at build time ({@code gradleTokenVersion} in {@code gradle.properties}). {@code mcmod.info}
+ * quotes the same token, so the FML log and the mod list cannot disagree, and tagging the release is what sets the
+ * version (CODE_REVIEW §9.13).
  */
 @Mod(
     modid = ArtificeCore.modID,
@@ -62,7 +68,7 @@ public class ArtificeCore {
     public static CommonProxy proxy;
     public static final String modID = "Artifice";
     public static final String modName = "Artifice";
-    public static final String modVersion = "1.7.10R1.1.4";
+    public static final String modVersion = Tags.VERSION;
     public static Logger logger;
     public static ArtificeEventHandler eventHandler;
     public static ArtificeTickHandler tickHandler;
