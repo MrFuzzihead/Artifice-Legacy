@@ -5,7 +5,6 @@ import java.util.ArrayDeque;
 import net.minecraft.world.World;
 
 import com.mrfuzzihead.artifice.util.ChunkCoord;
-import com.mrfuzzihead.artifice.world.IDelayedGen;
 import com.mrfuzzihead.artifice.world.ISuspendableGen;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -19,7 +18,7 @@ import gnu.trove.map.hash.THashMap;
  * Runs the worldgen generators that were suspended rather than completed inside the cofh feature callback.
  *
  * <p>
- * One chunk of the head generator per five world ticks, one delayed generator per ten. The "is it finished?"
+ * One chunk of the head generator per five world ticks. The "is it finished?"
  * answer comes from {@link ISuspendableGen#doGeneration}, which the generators derive from their pending-block map
  * via {@link com.mrfuzzihead.artifice.util.PendingChunks#hasWork} - it used to be the size of a key set that never
  * shrank, so nothing ever left the queue (CODE_REVIEW 5.6).
@@ -28,7 +27,6 @@ import gnu.trove.map.hash.THashMap;
 public class ArtificeTickHandler {
 
     public static TMap<Integer, ArrayDeque<ISuspendableGen>> suspendedGenerators = new THashMap<>();
-    public static TMap<Integer, ArrayDeque<IDelayedGen>> delayedGenerators = new THashMap<>();
 
     public static void queueGeneration(int dimID, ISuspendableGen gen) {
         if (gen.getChunksToGen()
@@ -42,15 +40,6 @@ public class ArtificeTickHandler {
         }
     }
 
-    public static void queueGeneration(int dimID, IDelayedGen gen) {
-        if (!delayedGenerators.containsKey(dimID)) {
-            delayedGenerators.put(dimID, new ArrayDeque<IDelayedGen>());
-        }
-
-        delayedGenerators.get(dimID)
-            .add(gen);
-    }
-
     @SubscribeEvent
     public void worldTickEnd(WorldTickEvent event) {
         if (event.phase != Phase.END || event.side != Side.SERVER) {
@@ -58,15 +47,8 @@ public class ArtificeTickHandler {
         }
 
         World world = event.world;
-        int dim = world.provider.dimensionId;
-        long time = world.getTotalWorldTime();
-
-        if (time % 5L == 0L) {
-            tickSuspendableGenerators(suspendedGenerators.get(dim));
-        }
-
-        if (time % 10L == 0L) {
-            tickDelayedGenerators(delayedGenerators.get(dim));
+        if (world.getTotalWorldTime() % 5L == 0L) {
+            tickSuspendableGenerators(suspendedGenerators.get(world.provider.dimensionId));
         }
     }
 
@@ -109,23 +91,6 @@ public class ArtificeTickHandler {
             queue.remove(gen);
         }
 
-        return true;
-    }
-
-    /**
-     * @return whether a delayed generator ran
-     */
-    static boolean tickDelayedGenerators(ArrayDeque<IDelayedGen> queue) {
-        if (queue == null || queue.isEmpty()) {
-            return false;
-        }
-
-        IDelayedGen gen = queue.poll();
-        if (gen == null) {
-            return false;
-        }
-
-        gen.doGeneration();
         return true;
     }
 }

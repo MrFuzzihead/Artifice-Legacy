@@ -1,7 +1,5 @@
 package com.mrfuzzihead.artifice.util;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
 import net.minecraft.entity.item.EntityItem;
@@ -62,10 +60,6 @@ public class MiscUtils {
         return sides;
     }
 
-    public static int randWithin50(Random rand, int input) {
-        return input > 1 ? input + rand.nextInt(input / 2) - rand.nextInt(input / 2) : 1;
-    }
-
     public static void dropStack(World world, int x, int y, int z, ItemStack itemstack) {
         while (itemstack.stackSize > 0) {
             float xOffset = world.rand.nextFloat() * 0.8F + 0.1F;
@@ -122,49 +116,5 @@ public class MiscUtils {
         }
 
         return amount;
-    }
-
-    public static <T extends TileEntity> List<T> getAdjoinedTileEntities(Class<T> teClass, World world, int x, int y,
-        int z) {
-        TileEntity te = world.getTileEntity(x, y, z);
-        if (te == null) {
-            return null;
-        } else {
-            List<TileEntity> teList = new ArrayList<>();
-            List<BlockCoord> done = new ArrayList<>();
-            List<T> adjoined = new ArrayList<>();
-            teList.add(te);
-
-            while (!teList.isEmpty()) {
-                te = teList.remove(0);
-                done.add(new BlockCoord(te.xCoord, te.yCoord, te.zCoord));
-                if (teClass.isInstance(te)) {
-                    adjoined.add((T) te);
-
-                    // Expand from the tile we just popped, not from the origin (CODE_REVIEW 5.5).
-                    // Using x/y/z here meant the walk was one block deep: every neighbour of the origin was already
-                    // in done, so the frontier never grew past the first ring.
-                    final int cx = te.xCoord;
-                    final int cy = te.yCoord;
-                    final int cz = te.zCoord;
-                    for (int i = 0; i < 6; i++) {
-                        ForgeDirection dir = ForgeDirection.VALID_DIRECTIONS[i];
-                        int nx = cx + dir.offsetX;
-                        int ny = cy + dir.offsetY;
-                        int nz = cz + dir.offsetZ;
-                        if (world.blockExists(nx, ny, nz)) {
-                            TileEntity neighbour = world.getTileEntity(nx, ny, nz);
-                            if (neighbour != null
-                                && !done.contains(new BlockCoord(neighbour.xCoord, neighbour.yCoord, neighbour.zCoord))
-                                && !teList.contains(neighbour)) {
-                                teList.add(neighbour);
-                            }
-                        }
-                    }
-                }
-            }
-
-            return adjoined;
-        }
     }
 }

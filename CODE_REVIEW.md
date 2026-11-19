@@ -18,10 +18,10 @@
 | 2 | `ArtificeEnchants` can leave `enchantmentSoulstealing` / `enchantmentResistance` / `enchantmentInvisible` null; `ArtificeEventHandler.onDeath` and `ArtificeCreativeTab` then NPE on every kill / tab open in a large pack | bug | ~~P0~~ done |
 | 3 | `DispenserBehaviorSledge` calls `getIngredientsForBlock` twice, the second time after `setBlockToAir` → guaranteed NPE when a dispenser fires a sledge | bug | ~~P1~~ done |
 | 4 | ~~`MiscUtils` neighbour helpers double-index the side array~~ - **retracted**: the double index is a permutation either way, so nothing was ever skipped (§5.4). Cleaned up for readability only | not a defect | ~~P1~~ |
-| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done |
+| 5 | `MiscUtils.getAdjoinedTileEntities` uses the method arguments instead of the current coordinate, so the flood fill is depth 1 | bug | ~~P1~~ done, then deleted - it never had a caller (§8) |
 | 6 | `NameMetaPair.hashCode()` ignores the `-1` wildcard that `equals()` honours → wildcard lookups miss in hash collections; `WorldGenVolcano`'s replace set never matches | bug | ~~P1~~ done |
 | 7 | `ArtificeTickHandler` never dequeues suspendable generators (their `getChunksToGen()` key set never shrinks) → a permanent per-5-tick scan that grows for the life of the save | leak/perf | ~~P1~~ done |
-| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, `blockTephra`, two config keys) is unreachable dead code | dead code | **P1** (open - needs a keep-or-delete decision) |
+| 8 | The whole volcano feature (`WorldGenVolcano`, `VolcanoHelper`, the delayed-generator path, two config keys) is unreachable dead code | dead code | ~~P1~~ done |
 | 9 | `ArtificeCreativeTab` overrides client-only `CreativeTabs` methods without `@SideOnly(CLIENT)` → `NoSuchMethodError` on a dedicated server | bug | ~~P2~~ done |
 | 10 | `>=`/`>` off-by-one bounds checks in 6 `getIcon` implementations | bug | ~~P2~~ done |
 | 11 | `BlockFrameScaffold.checkStay` bails out on the first scaffold neighbour instead of continuing | bug | ~~P2~~ done |
@@ -197,9 +197,9 @@ Line numbers are from `src/main/java/com/mrfuzzihead/artifice/` at commit `616bb
 every bit is set, so a wildcard key hashes to `-1` and lands in a different bucket than the concrete key it should
 match. Any `HashSet`/`HashMap` lookup with the wildcard form silently misses.
 
-This is not theoretical: `WorldGenVolcano` builds `replaced` from `new NameMetaPair(biome.topBlock)` (wildcard
-metadata) and then queries it with concrete `(block, meta)` pairs, so the set never matches and the volcano's
-surface-replacement logic is dead even if the feature were enabled.
+This is not theoretical: the volcano generator (deleted in §8) built `replaced` from
+`new NameMetaPair(biome.topBlock)` (wildcard metadata) and then queried it with concrete `(block, meta)` pairs, so
+the set never matched and its surface-replacement logic was dead even if the feature had been enabled.
 
 Fix:
 
@@ -212,7 +212,7 @@ public int hashCode() {
 
 Acceptance test: `NameMetaPairTest.wildcardPairIsFindableInAHashSet`, which passes now - a `-1` key and a concrete
 key hash alike and match each other in a `HashSet`, while two concrete keys with different metadata still do not.
-`WorldGenVolcano`'s `replaced` set therefore matches again, which matters if the volcano is ever wired up (§8).
+The wildcard rule is pinned independently of that caller, which no longer exists (§8).
 
 **Status: fixed on `refactor/1.1.6`.**
 
@@ -358,10 +358,11 @@ After the first expansion every neighbour of the origin is already in `done`, so
 "adjoined" set is the origin plus its immediate same-class neighbours. The method is currently unused (see §8), so
 this is latent — but it is a trap for whoever wires it up.
 
-**Status: fixed on `refactor/1.1.6`.** The expansion now uses the tile it just popped (`te.xCoord/yCoord/zCoord`),
-and `MiscUtilsTest.getAdjoinedTileEntitiesWalksTheWholeConnectedRun` pins it with a 1x1x4 run of furnaces: the old
-code returned two of the four, the new code returns all four. The method is still unused (§8) - fixing it did not
-give it a caller.
+**Status: fixed on `refactor/1.1.6`, then deleted.** The expansion was corrected to use the tile it just popped, and
+`MiscUtilsTest.getAdjoinedTileEntitiesWalksTheWholeConnectedRun` pinned it with a 1x1x4 run of furnaces: the old code
+returned two of the four, the corrected code returned all four. Fixing it did not give it a caller, so it went with
+the rest of the dead code (§8) - a known-buggy helper with no user is a trap, not an asset. The analysis above is kept
+because it is the reason the method is not coming back without a test.
 
 ### 5.6 `ArtificeTickHandler` never dequeues suspendable generators — **P1 (unbounded growth)**
 
@@ -427,9 +428,9 @@ that is O(256) per placement and per neighbour update. See §6.
 bounded at `y < 256`.
 
 The analysis was right about the mechanism but wrong about how often it bites, and the test proved it: an
-**anchored neighbour of the same tier** was already rescued by the radius search that runs inside the same
-iteration (`c.getRadiusMatches(...)` scans a cube of `overhang` around the block, so a direct neighbour is always
-in it). The observable case is a scaffold neighbour of a **different tier**: `t.blockEquals(...)` is false, so the
+**anchored neighbour of the same tier** was already rescued by the radius search that ran inside the same
+iteration (`BlockCoord.getRadiusMatches`, deleted with the rest of §8; it scanned a cube of `overhang` around the
+block, so a direct neighbour was always in it). The observable case is a scaffold neighbour of a **different tier**: `t.blockEquals(...)` is false, so the
 radius search never runs, and the `return false` ends the search before the loop reaches the anchored side. Two
 scaffolds of different metals side by side, one of them floating, is enough to drop a block that had a good anchor.
 
@@ -1041,8 +1042,8 @@ attempts at the flood fill were wrong in ways I would not have reasoned out:
   component** - including through the block above. The old code's two halves disagreed about that, and the test says
   so.
 
-That second point is the behaviour recorded in §9.11. `BlockCoord.isConnected` and `getRadiusMatches` have no callers
-left (§8).
+That second point is the behaviour recorded in §9.11. `BlockCoord.isConnected` and `getRadiusMatches` had no callers
+left and are deleted (§8).
 
 ### 6.2 MiscUtils: why not the static rotation
 
@@ -1107,8 +1108,8 @@ if (this.frequency >= 100) {
 }
 ```
 
-appears verbatim in **eight** generators (`WorldGenLake`, `Volcano`, `Flowers`, `Lily`, `Sulfur`, `Desert`,
-`Cluster`, `Cave`). Besides the duplication it is subtly broken:
+appeared verbatim in **eight** generators (`WorldGenLake`, `Volcano`, `Flowers`, `Lily`, `Sulfur`, `Desert`,
+`Cluster`, `Cave`); the volcano's copy went with the generator (§8), so seven remain. Besides the duplication it is subtly broken:
 
 * **`frequency = 0` means "once per chunk", not "off".** The `else` branch is
   `total = rand.nextInt(100) < 0 ? 0 : 1`, which always yields `1`. A user who sets 0 to disable a feature gets it
@@ -1230,13 +1231,14 @@ collision box against the block's own bounds.
 
 | Item | Evidence | Recommendation |
 |---|---|---|
-| **Volcano worldgen** | `WorldGenVolcano` (44 lines), `VolcanoGen` (200 lines), `VolcanoHelper` (93 lines), `blockTephra`, `ArtificeConfig.volcanoGen/volcanoFrequency`, and two lang entries exist, but `ArtificeWorld.initWorldGen()` never registers `WorldGenVolcano`. | Either register it (`WorldHandler.addFeature(new WorldGenVolcano())` when `volcanoGen`) and fix §5.1 so it works, or delete the 350 lines. **It currently does nothing.** |
-| `VolcanoGen.genTephra`, `genCaldera` (empty body), `coverFeature`, `VolcanoHelper.get2dSINDistributedCoord` | Unreferenced. | Delete with the feature, or wire into `VolcanoGen`. |
-| `IDelayedGen` + `ArtificeTickHandler.delayedGenerators` | Only implemented by `WorldGenVolcano.VolcanoGen` → entire delayed-gen path is dead. | Delete with the volcano. |
-| `HeatStorage` | Implements `IHeatProvider`/`IHeatReceiver` and has tests, but **no tile entity uses it** (both machines use CoFH `EnergyStorage`). | Keep if it is intended as an API; otherwise delete. Its tests are the only reason it is covered. |
-| `XSRandom` | Never instantiated. | Delete, or use it in worldgen for determinism. |
-| `MiscUtils.getAdjoinedTileEntities` | No callers (it is the buggy depth-1 flood fill from §5.5). | Delete, or fix and use it for multiblock coils. |
-| `BlockCoord.isConnected` / `getRadiusMatches` | The scaffold support walk used both until §6.3 replaced it with one flood fill; nothing else calls them. | Delete, or keep as utility API - they are public and the support test still transcribes them. |
+| **Volcano worldgen** | `WorldGenVolcano` (400 lines with the inner `VolcanoGen`), `VolcanoHelper` (194 lines), `ArtificeConfig.volcanoGen/volcanoFrequency` existed, but `ArtificeWorld.initWorldGen()` never registered `WorldGenVolcano` - it had never run in a shipped build. | **done**: deleted the generator, the helper, the delayed-generator path and the two config keys. `blockTephra` is kept: it is a registered name (§4), it is already unobtainable, and deleting it would change a frozen registry. A volcano, if ever wanted, is a new feature with a seed sweep, not a revival. |
+| `VolcanoGen.genTephra`, `genCaldera` (empty body), `coverFeature`, `VolcanoHelper.get2dSINDistributedCoord` | Unreferenced. | **done**: went with the generator. |
+| `IDelayedGen` + `ArtificeTickHandler.delayedGenerators` | Only `WorldGenVolcano.VolcanoGen` implemented it → the whole ten-tick delayed path was dead, while the five-tick `ISuspendableGen` path is live (cave/cluster/desert/sulfur). | **done**: deleted the interface, the map, the `queueGeneration` overload and `tickDelayedGenerators`, plus their two tests. The `ISuspendableGen` sweep is untouched. |
+| `HeatStorage` | Implemented `IHeatProvider`/`IHeatReceiver` and had tests, but **no tile entity used it** (both machines use CoFH `EnergyStorage`). | **done**: deleted, with `HeatStorageTest`. The `IHeatProvider`/`IHeatReceiver` interfaces stay - those are live (`TileEntityHeatingCoil`, `TileFurnaceWrapper`, `MiscUtils.getHeatReceiverNeighbor`). |
+| `XSRandom` | Never instantiated; a `java.util.Random` subclass that only its own test called. | **done**: deleted, with `XSRandomTest`. Worldgen takes the `rand` it is handed, which is already seeded per chunk. |
+| `MiscUtils.getAdjoinedTileEntities` | No callers (it was the depth-1 flood fill from §5.5, fixed and still unused). | **done**: deleted, with its three tests - see §5.5 for why the fix was not worth keeping. |
+| `BlockCoord.isConnected` / `getRadiusMatches` | The scaffold support walk used both until §6.3 replaced it with one flood fill; nothing else called them and no test covered them. | **done**: deleted both, plus the three `blockEquals` overloads nothing called. `blockEquals(World, Block, int)`, `getRadiusBlocks` and `getDistance` are live and stay. |
+| `MiscUtils.randWithin50` | Its only caller was `VolcanoGen`'s tephra scatter, so deleting the volcano left it with none (four unit tests, all its own). | **done**: deleted, with the tests. |
 | `ComparableItemStack` / `ComparableItemStackNBT` | Used only by `RecipeBox.matches`. | **done**: the unchecked cast and a null-item dereference both answer `false` now, and the in-game "box stack comparison" test covers the pair (it cannot be headless - the harness has no bootstrapped item registry). |
 | `ArtificeCore.modChannel`, `modVersion`, `ArtificeCore.modName` | `modChannel` unused; `modVersion` duplicates the `@Mod(version=…)` literal; `modName` duplicates `name=`. | **done**: the annotation and `@Instance` read the constants, `modChannel` is deleted, and `RegistrationInvariantsTest` pins the version against the annotation. The network channel keeps its literal on purpose - it is the wire protocol's name and must not follow a future id change. |
 | `CommandCalc` evaluator | See §5.35. | Delete the command or restore the dependency. |
@@ -1340,8 +1342,8 @@ fluids Artifice did not create.
 * **Attuned redstone is O(N·M) and has no range limit.** A proper signal bus (per-frequency power cache, and
   optionally a dimension whitelist) would make it usable at scale.
 * **The heating coil is the only furnace-heating block.** A "heat pipe" using the existing `IHeatProvider` /
-  `IHeatReceiver` interfaces (and `HeatStorage`, currently unused) would be a natural extension — the interfaces
-  already exist.
+  `IHeatReceiver` interfaces would be a natural extension — the interfaces already exist. (`HeatStorage`, the
+  unused buffer that used to sit behind them, was deleted in §8; a buffer is twenty lines if the pipe ever lands.)
 * **`WorldGenLayer`/`WorldGenCluster` already implement `ISuspendableGen`-style chunking.** Unifying them (§7.1)
   makes retro-generation cheap to add.
 * **The creative tab is not localised** (§5.11) and the lang file already has the keys.
@@ -1462,8 +1464,8 @@ package untouched, every other byte identical, `1803/1803` checks green.
 
 ### 10.1 What is covered now
 
-* **Unit (192 tests, 24 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
-  `MiscUtils`, `HeatStorage`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `XSRandom`, `EnumUpgrades`,
+* **Unit (172 tests, 22 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+  `MiscUtils`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `EnumUpgrades`,
   `TileEntityLogic`, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
@@ -1611,11 +1613,11 @@ File: `config/Artifice.cfg`.
 | Category | Keys (count) | Notes |
 |---|---|---|
 | `Resource Generation` | 13 | Ender ore, uranium, sulfur, niter, oil lakes |
+| ~~`Volcano Generation`~~ | 0 | deleted (§8) - an existing `artifice.cfg` keeps the stale section until the file is regenerated |
 | `Plant Generation` | 4 | Flowers, lotuses |
 | `Layer Generation` | 27 | 9 stone types × 3 |
 | `Cluster Generation` | 20 | 3 rock groups × size/height/frequency |
 | `Cave Generation` | 20 | 3 rock groups × size/height/frequency |
-| `Volcano Generation` | 2 | **dead** (§8) |
 | `Recipes` | 26 | every feature toggle |
 | `Compatibility` | 4 | dimension blacklist, bonemeal, marble/basalt lists |
 | `Compat` | 4 | MFR laser registration |
@@ -1707,7 +1709,7 @@ approximation. Re-run it before any release that touches names.
 | §6 tracking O(N·M) | `event/Tracking.java:16-38`; `tile/TileEntityAttuned.java:21-31` |
 | §7.1 blob duplication | `WorldGenCluster:133-246`, `WorldGenSulfur:112-197`, `WorldGenDesert:103-188`, `WorldGenCave:142-256` |
 | §7.2 frequency copies | 8 `WorldGen*` classes, `generateFeature` |
-| §8 volcano dead | `world/WorldGenVolcano.java`, `world/VolcanoHelper.java`; `ArtificeWorld.java` (no reference); `ArtificeConfig.java:82, 197` |
+| §8 volcano dead | deleted - `world/WorldGenVolcano.java`, `world/VolcanoHelper.java`, `world/IDelayedGen.java`; `ArtificeConfig.java:85, 223` (the two keys) |
 | §9.1 ore rewrite | `ArtificeBlocks.java:264-290`; `WorldGenCluster.java:190-235` |
 | §9.2 ore smelting | `recipe/ArtificeRecipes.java:838-860`; `ArtificeBlocks.java:278-290`; `ArtificeCore.java:115-131` |
 

@@ -1,7 +1,6 @@
 package com.mrfuzzihead.artifice.util;
 
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 import net.minecraft.block.Block;
@@ -219,30 +218,6 @@ public class BlockCoord implements Comparable {
         return this.set(t.x, t.y, t.z);
     }
 
-    public List<BlockCoord> getRadiusMatches(World world, int radius, Block block, int meta) {
-        List<BlockCoord> matches = new ArrayList<>();
-        BlockCoord c = this.copy();
-        int minX = c.x - radius;
-        int maxX = c.x + radius + 1;
-        int minY = c.y - radius;
-        int maxY = c.y + radius + 1;
-        int minZ = c.z - radius;
-        int maxZ = c.z + radius + 1;
-
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                for (int z = minZ; z < maxZ; z++) {
-                    BlockCoord t = new BlockCoord(x, y, z);
-                    if (t.blockEquals(world, block, meta)) {
-                        matches.add(t);
-                    }
-                }
-            }
-        }
-
-        return matches;
-    }
-
     public List<BlockCoord> getRadiusBlocks(int radius) {
         List<BlockCoord> matches = new ArrayList<>((int) Math.pow(2 * radius, 3.0));
         BlockCoord c = this.copy();
@@ -265,55 +240,9 @@ public class BlockCoord implements Comparable {
         return matches;
     }
 
-    public boolean blockEquals(World world, BlockCoord c) {
-        return c.getBlock(world) == null && this.getBlock(world) == null
-            || !(c.getBlock(world) == null ^ this.getBlock(world) == null) && c.getBlock(world)
-                .equals(this.getBlock(world)) && c.getMeta(world) == this.getMeta(world);
-    }
-
     public boolean blockEquals(World world, Block block, int meta) {
         return this.getBlock(world) != null && this.getBlock(world)
             .equals(block) && this.getMeta(world) == meta;
-    }
-
-    public boolean blockEquals(IBlockAccess world, BlockCoord c) {
-        return c.getBlock(world) == null && this.getBlock(world) == null
-            || !(c.getBlock(world) == null ^ this.getBlock(world) == null) && c.getBlock(world)
-                .equals(this.getBlock(world)) && c.getMeta(world) == this.getMeta(world);
-    }
-
-    public boolean blockEquals(IBlockAccess world, Block block, int meta) {
-        return this.getBlock(world) != null && this.getBlock(world)
-            .equals(block) && this.getMeta(world) == meta;
-    }
-
-    public boolean isConnected(World world, BlockCoord c) {
-        return this.isConnected(world, c, this.getBlock(world), this.getMeta(world));
-    }
-
-    public boolean isConnected(World world, BlockCoord c, Block block, int meta) {
-        List<BlockCoord> traversed = new LinkedList<>();
-        List<BlockCoord> toTraverse = new LinkedList<>();
-        toTraverse.add(this);
-
-        while (!toTraverse.isEmpty()) {
-            BlockCoord t = toTraverse.get(0);
-            traversed.add(toTraverse.remove(0));
-
-            for (BlockCoord j : t.getAdjacent()) {
-                if (j.blockEquals(world, block, meta)) {
-                    if (j.equals(c)) {
-                        return true;
-                    }
-
-                    if (!traversed.contains(j) && !toTraverse.contains(j)) {
-                        toTraverse.add(j);
-                    }
-                }
-            }
-        }
-
-        return false;
     }
 
     public float getDistance(BlockCoord c) {

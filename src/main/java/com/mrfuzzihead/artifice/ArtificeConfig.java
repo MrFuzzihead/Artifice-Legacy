@@ -82,8 +82,6 @@ public class ArtificeConfig {
     public static int[] rockCavesMinHeight = new int[3];
     public static int[] rockCavesMaxHeight = new int[3];
     public static int[] rockCavesFrequency = new int[3];
-    public static boolean volcanoGen;
-    public static int volcanoFrequency;
     public static boolean floraRecipes;
     public static boolean basaltRecipes;
     public static boolean marbleRecipes;
@@ -219,10 +217,6 @@ public class ArtificeConfig {
         oilLakeGen = c.get("Resource Generation", "Generate Oil Lakes", true)
             .getBoolean();
         oilLakeFrequency = c.get("Resource Generation", "Percentage Oil lake Frequency", 100)
-            .getInt();
-        volcanoGen = c.get("Volcano Generation", "Generate Volcanoes", true)
-            .getBoolean();
-        volcanoFrequency = c.get("Volcano Generation", "Percentage Volcano Frequency", 100)
             .getInt();
 
         for (int i = 0; i < rockNames.length; i++) {
