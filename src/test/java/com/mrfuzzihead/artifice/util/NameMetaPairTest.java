@@ -63,10 +63,10 @@ public class NameMetaPairTest {
 
     /**
      * Regression (CODE_REVIEW 5.1): a wildcard pair must be findable in a hash-based collection, and a concrete
-     * pair must be findable when the set holds the wildcard. {@code WorldGenVolcano#replaced} is built from
-     * {@code new NameMetaPair(biome.topBlock)} - wildcard metadata - and then queried with concrete
-     * {@code (block, meta)} pairs, so before the fix the set could never match and the volcano's surface
-     * replacement was dead even with the feature enabled.
+     * pair must be findable when the set holds the wildcard. The volcano generator's replace set - deleted since
+     * (CODE_REVIEW §8) - was built from {@code new NameMetaPair(biome.topBlock)}, wildcard metadata, and then
+     * queried with concrete {@code (block, meta)} pairs, so before the fix the set could never match. The rule is a
+     * property of the pair, so it is worth pinning with or without that caller.
      */
     @Test
     public void wildcardPairIsFindableInAHashSet() {

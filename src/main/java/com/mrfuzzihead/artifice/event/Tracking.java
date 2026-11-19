@@ -1,10 +1,8 @@
 package com.mrfuzzihead.artifice.event;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -14,7 +12,7 @@ import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
 
 /**
- * Frequency bookkeeping for the attuned redstone pair, and the client's sneak state.
+ * Frequency bookkeeping for the attuned redstone pair.
  *
  * <p>
  * The attuned transmitter asks "what is the strongest receiver on my frequency?" once per tick, from
@@ -31,6 +29,12 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
  * </p>
  *
  * <p>
+ * The index is the whole point, so its cost is observable: {@link #visitsOfLastQuery()} reports how many tiles the
+ * last query walked, which is how the game test asserts that a query costs O(tiles on that frequency) rather than
+ * O(loaded tiles). It is a counter, not a cache - it never influences the answer.
+ * </p>
+ *
+ * <p>
  * Entries are removed by three mechanisms, in order of how early they can fire: {@code invalidate()} on the tile
  * entity, {@link #forget(World)} on a world unload (a world that never ticks again would not reach
  * {@code invalidate()}), and a sweep of invalid entries during a query. Only the third is load-bearing for correctness
@@ -39,13 +43,15 @@ import com.mrfuzzihead.artifice.tile.TileEntityAttuned;
  */
 public class Tracking {
 
-    public static List<Integer> sneaks = new ArrayList<>();
-
     /** Every attuned tile entity, by frequency. Insertion-ordered so a query sees a stable order. */
     private static final Map<String, Set<TileEntityAttuned>> BY_FREQUENCY = new HashMap<>();
 
+    /** Tiles walked by the last {@link #getHighestFrequencyPower(String)}; diagnostics for the game test. */
+    private static int lastQueryVisits;
+
     /** The signal a transmitter publishes for {@code frequency}: the highest power of any receiver on it. */
     public static int getHighestFrequencyPower(String frequency) {
+        lastQueryVisits = 0;
         if (frequency == null) {
             return 0;
         }
@@ -58,6 +64,7 @@ public class Tracking {
         int max = 0;
         for (Iterator<TileEntityAttuned> iterator = teas.iterator(); iterator.hasNext();) {
             TileEntityAttuned tea = iterator.next();
+            lastQueryVisits++;
             if (tea.isInvalid()) {
                 iterator.remove();
                 continue;
@@ -164,6 +171,11 @@ public class Tracking {
                 sets.remove();
             }
         }
+    }
+
+    /** How many tiles the last query walked, regardless of how many are loaded. For the cost assertion. */
+    public static int visitsOfLastQuery() {
+        return lastQueryVisits;
     }
 
     /** How many tiles are filed under a frequency. Package-private: this is for the tests and for debugging. */

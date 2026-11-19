@@ -82,8 +82,6 @@ public class ArtificeConfig {
     public static int[] rockCavesMinHeight = new int[3];
     public static int[] rockCavesMaxHeight = new int[3];
     public static int[] rockCavesFrequency = new int[3];
-    public static boolean volcanoGen;
-    public static int volcanoFrequency;
     public static boolean floraRecipes;
     public static boolean basaltRecipes;
     public static boolean marbleRecipes;
@@ -91,6 +89,12 @@ public class ArtificeConfig {
     public static boolean limestoneRecipes;
     public static boolean resourceRecipes;
     public static boolean floraBoneMeal;
+    /**
+     * Whether the rock generators may turn *another mod's* ore block into the Artifice variant for the rock they are
+     * generating in. Vanilla ores and Artifice's own always convert; this is only about foreign ore blocks. On by
+     * default because turning it off changes what existing worlds generate (CODE_REVIEW 9.1).
+     */
+    public static boolean convertOtherModOres;
     public static boolean flavorText;
     public static boolean tooltips;
     public static boolean spawnEndermen;
@@ -219,10 +223,6 @@ public class ArtificeConfig {
         oilLakeGen = c.get("Resource Generation", "Generate Oil Lakes", true)
             .getBoolean();
         oilLakeFrequency = c.get("Resource Generation", "Percentage Oil lake Frequency", 100)
-            .getInt();
-        volcanoGen = c.get("Volcano Generation", "Generate Volcanoes", true)
-            .getBoolean();
-        volcanoFrequency = c.get("Volcano Generation", "Percentage Volcano Frequency", 100)
             .getInt();
 
         for (int i = 0; i < rockNames.length; i++) {
@@ -388,6 +388,12 @@ public class ArtificeConfig {
         floraBoneMeal = c.get("Compatibility", "Bonemeal Flowers", true)
             .getBoolean();
         c.get("Compatibility", "Bonemeal Flowers", true).comment = "Allow flower growth from bonemeal";
+        convertOtherModOres = c.get("Compatibility", "Convert Other Mods' Ores", true)
+            .getBoolean();
+        c.get(
+            "Compatibility",
+            "Convert Other Mods' Ores",
+            true).comment = "Whether basalt, marble and the limestones may replace another mod's ore block with their own variant of it when a blob generates through it. Vanilla ores and Artifice's own always convert. Turning this off changes what new chunks contain.";
         marbleList = c.get("Compatibility", "Marble List", "")
             .getString();
         c.get(

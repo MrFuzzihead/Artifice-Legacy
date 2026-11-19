@@ -8,6 +8,7 @@ import net.minecraft.util.IIcon;
 
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -25,7 +26,7 @@ public class ItemBlockFlora extends ItemBlockArtifice {
 
     @SideOnly(Side.CLIENT)
     public IIcon getIconFromDamage(int meta) {
-        return meta >= ArtificeConfig.flora.length ? BlockFlora.icons[0] : BlockFlora.icons[meta];
+        return BlockFlora.icons[ArrayUtils.clampIndex(meta, ArtificeConfig.flora.length)];
     }
 
     public String getUnlocalizedName(ItemStack stack) {

@@ -54,11 +54,10 @@ public class WorldGenLily implements IFeatureGenerator {
                         int y = world.getHeightValue(x, z);
                         if (c.contains(x, z) && world.isAirBlock(x, y, z)
                             && ArtificeBlocks.blockLotus.canPlaceBlockAt(world, x, y, z)) {
-                            if (world.getWorldTime() > 12000L) {
-                                world.setBlock(x, y, z, ArtificeBlocks.blockLotus, 1, 0);
-                            } else {
-                                world.setBlock(x, y, z, ArtificeBlocks.blockLotus, 0, 0);
-                            }
+                            // Always the open lotus, for the reason in WorldGenFlowers: the clock was a
+                            // worldgen-determinism bug, and BlockLotus.updateTick closes it on the next tick if
+                            // the light there is below 8 (CODE_REVIEW 9.5).
+                            world.setBlock(x, y, z, ArtificeBlocks.blockLotus, 0, 0);
                         }
                     }
                 }

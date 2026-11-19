@@ -51,4 +51,7 @@ dependencies {
     // these are gated on Loader.isModLoaded(...) at runtime, so they are never present in a pack that lacks the mod.
     compileOnly("com.github.GTNewHorizons:CarpentersBlocks:3.8.0-GTNH:dev")
     compileOnly("com.github.GTNewHorizons:ForestryMC:4.12.1:dev")
+    // Chisel's carving registry, so ChiselCompat can call it directly instead of Chisel shipping a table of names that
+    // do not exist (CODE_REVIEW 9.9 / E.4). Loaded only when Chisel is present.
+    compileOnly("com.github.GTNewHorizons:Chisel:2.18.1-GTNH:dev")
 }

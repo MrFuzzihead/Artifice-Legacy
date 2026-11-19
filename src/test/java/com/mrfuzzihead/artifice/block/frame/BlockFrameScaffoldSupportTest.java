@@ -155,8 +155,9 @@ public class BlockFrameScaffoldSupportTest {
     }
 
     private static boolean referenceCheckStay(FakeWorld fake, Block block, int x, int y, int z, int meta) {
+        // The old algorithm's five directions plus UP, which is the one deliberate difference (CODE_REVIEW §9.11).
         ForgeDirection[] sides = { ForgeDirection.NORTH, ForgeDirection.SOUTH, ForgeDirection.EAST, ForgeDirection.WEST,
-            ForgeDirection.DOWN };
+            ForgeDirection.DOWN, ForgeDirection.UP };
 
         BlockCoord c = new BlockCoord(x, y, z);
         if (referenceIsRooted(fake, block, x, y, z, meta)) {
@@ -301,39 +302,49 @@ public class BlockFrameScaffoldSupportTest {
     }
 
     @Test
-    public void aBlockIsNotSupportedByTheBlockDirectlyAboveIt() {
-        // The old algorithm only looked for a same-tier neighbour on the five sides, never above, so an anchored
-        // column cannot be extended downwards. That is preserved by the refactor and pinned here so that changing it
-        // is a decision rather than an accident (CODE_REVIEW §9.11).
+    public void aBlockIsSupportedByTheBlockDirectlyAboveIt() {
+        // CODE_REVIEW §9.11: the old algorithm only looked for a same-tier neighbour on the five sides, never above,
+        // so an anchored column could not be extended downwards. That was a decision rather than a refactor accident,
+        // and the decision is now the other way - building downwards from an anchor is what a player expects.
         FakeWorld fake = new FakeWorld();
         Block block = fake.block;
 
-        // An anchored scaffold directly above the position under test.
-        fake.stone(0, 9, 0);
-        fake.scaffold(0, 10, 0, 0);
-        fake.air(0, 11, 0);
+        // An anchored scaffold at (1,9,0) - stone underneath it - and a neighbour beside it at (0,9,0).
+        fake.stone(1, 8, 0);
+        fake.scaffold(1, 9, 0, 0);
+        fake.scaffold(0, 9, 0, 0);
+        fake.air(0, 8, 0);
 
-        Assert.assertTrue("the column itself is supported", supported(fake, block, 0, 10, 0));
-        Assert.assertFalse("the space under it is not", supported(fake, block, 0, 9, 0));
+        // The space below (0,9,0) has exactly one same-tier neighbour: the scaffold above it. Old rule: unsupported.
+        Assert.assertTrue("the column is anchored", supported(fake, block, 1, 9, 0));
+        Assert.assertTrue("a block under the column is supported through it", supported(fake, block, 0, 8, 0));
+
+        // Remove the anchor's ground and the whole chain is floating, so the block below goes with it.
+        fake.air(1, 8, 0);
+        Assert.assertFalse("no anchored block in the chain", supported(fake, block, 0, 8, 0));
     }
 
     @Test
-    public void aSideNeighbourOpensTheSearchAndAnAboveNeighbourDoesNot() {
-        // The entry rule, from the other direction: the walk only starts if one of the five sides is the same tier.
-        // With a neighbour above and nothing on the sides, the block is unsupported even though the anchor is one
-        // block away; add an anchored side neighbour and it becomes supported.
+    public void anyNeighbourOpensTheSearch() {
+        // The entry rule (CODE_REVIEW §9.11). The space at (0,8,0) has exactly one same-tier neighbour, the scaffold
+        // above it; under the old five-direction rule that was not enough to start the walk.
         FakeWorld fake = new FakeWorld();
         Block block = fake.block;
-        fake.stone(0, 9, 0);
-        fake.scaffold(0, 10, 0, 0); // anchored, directly above the position under test
-        fake.air(0, 9, 0);
 
-        Assert.assertFalse("nothing on the sides", supported(fake, block, 0, 9, 0));
-
-        // A side neighbour that is itself anchored (on its own ground).
         fake.stone(1, 8, 0);
-        fake.scaffold(1, 9, 0, 0);
-        Assert.assertTrue("a same-tier neighbour on a side opens the search", supported(fake, block, 0, 9, 0));
+        fake.scaffold(1, 9, 0, 0); // rooted: stone under it
+        fake.scaffold(0, 9, 0, 0); // beside it, same tier
+        fake.air(0, 8, 0);
+
+        Assert.assertTrue("a same-tier neighbour above opens the search", supported(fake, block, 0, 8, 0));
+
+        // The same geometry one tier off: nothing the block under test can join, so it stays unsupported.
+        fake.scaffold(0, 9, 0, 1);
+        Assert.assertFalse("a different tier above does not open it", supported(fake, block, 0, 8, 0));
+
+        // No same-tier neighbour anywhere near.
+        fake.air(0, 9, 0);
+        Assert.assertFalse("no neighbour at all", supported(fake, block, 0, 8, 0));
     }
 
     @Test

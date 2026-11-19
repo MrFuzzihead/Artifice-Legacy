@@ -25,6 +25,7 @@ import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.block.ItemBlockArtifice;
 import com.mrfuzzihead.artifice.render.TextureHandler;
 import com.mrfuzzihead.artifice.tile.TileEntityNuclearBattery;
+import com.mrfuzzihead.artifice.util.ArrayUtils;
 import com.mrfuzzihead.artifice.util.FormatCodes;
 import com.mrfuzzihead.artifice.util.MiscUtils;
 import com.mrfuzzihead.artifice.util.Names;
@@ -56,7 +57,7 @@ public class BlockNuclearBattery extends Block implements ITileEntityProvider {
 
     @SideOnly(Side.CLIENT)
     public IIcon getIcon(int side, int meta) {
-        return meta < this.icons.length ? this.icons[meta] : this.icons[0];
+        return this.icons[ArrayUtils.clampIndex(meta, this.icons.length)];
     }
 
     public void getSubBlocks(Item item, CreativeTabs tabs, List list) {
@@ -106,12 +107,14 @@ public class BlockNuclearBattery extends Block implements ITileEntityProvider {
         TileEntity te = world.getTileEntity(x, y, z);
         if (te instanceof TileEntityNuclearBattery) {
             TileEntityNuclearBattery teb = (TileEntityNuclearBattery) te;
+            // Only a stack that says how much it holds transfers a charge. The fallback used to be "fill it up",
+            // which combined with the recipe's stamped NBT to make every crafted battery arrive full - one craft
+            // was a gigawatt-hour from nothing, and the machine had nothing left to do (CODE_REVIEW 5.27). A fresh
+            // tile starts empty, which is what an untagged stack now places.
             if (stack.hasTagCompound()) {
                 teb.setEnergy(
                     stack.getTagCompound()
                         .getInteger("charge"));
-            } else {
-                teb.setEnergy(ArtificeConfig.nuclearBatteryCapacity);
             }
         }
     }

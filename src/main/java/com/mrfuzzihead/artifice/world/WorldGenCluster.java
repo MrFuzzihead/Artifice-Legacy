@@ -74,35 +74,38 @@ public class WorldGenCluster implements IFeatureGenerator {
                         return false;
                     }
 
-                    if (this.block.getUnlocalizedName()
+                    // The variant is a local, not a field: the blob is queued and finished later, so a field would
+                    // hold whatever the last chunk generation left there (CODE_REVIEW 5.33).
+                    Block chosen = this.block;
+                    if (chosen.getUnlocalizedName()
                         .contains("limestone")) {
                         BiomeGenBase biome = world.getBiomeGenForCoords(b.x, b.z);
                         if (BiomeDictionary.isBiomeOfType(biome, Type.SANDY)) {
                             if (b.y > world.getHeightValue(b.x, b.z) / 2) {
-                                this.block = ArtificeBlocks.blockLimestones[3];
+                                chosen = ArtificeBlocks.blockLimestones[3];
                             } else {
-                                this.block = ArtificeBlocks.blockLimestones[2];
+                                chosen = ArtificeBlocks.blockLimestones[2];
                             }
                         } else if (BiomeDictionary.isBiomeOfType(biome, Type.WATER)) {
-                            this.block = ArtificeBlocks.blockLimestones[5];
+                            chosen = ArtificeBlocks.blockLimestones[5];
                         } else if (BiomeDictionary.isBiomeOfType(biome, Type.JUNGLE)
                             || BiomeDictionary.isBiomeOfType(biome, Type.SWAMP)) {
-                                this.block = ArtificeBlocks.blockLimestones[6];
+                                chosen = ArtificeBlocks.blockLimestones[6];
                             } else if (!BiomeDictionary.isBiomeOfType(biome, Type.MESA)
                                 && !BiomeDictionary.isBiomeOfType(biome, Type.MOUNTAIN)) {
                                     if (b.y > world.getHeightValue(b.x, b.z) / 2) {
-                                        this.block = ArtificeBlocks.blockLimestones[1];
+                                        chosen = ArtificeBlocks.blockLimestones[1];
                                     } else {
-                                        this.block = ArtificeBlocks.blockLimestones[0];
+                                        chosen = ArtificeBlocks.blockLimestones[0];
                                     }
                                 } else {
-                                    this.block = ArtificeBlocks.blockLimestones[4];
+                                    chosen = ArtificeBlocks.blockLimestones[4];
                                 }
                     }
 
                     int num = rand.nextInt((int) (this.size * 1.5) - (int) (this.size * 0.5) + 1)
                         + (int) (this.size * 0.5);
-                    WorldGenCluster.ClusterGen cluster = new WorldGenCluster.ClusterGen(world, rand, b, num);
+                    WorldGenCluster.ClusterGen cluster = new WorldGenCluster.ClusterGen(world, rand, b, num, chosen);
                     cluster.doGeneration(chunkX, chunkZ);
                     ArtificeTickHandler.queueGeneration(dim, cluster);
                 }
@@ -117,11 +120,17 @@ public class WorldGenCluster implements IFeatureGenerator {
         return !b.isAir(world) && (this.replaced.contains(pair) || ArtificeBlocks.oreSet.contains(pair));
     }
 
-    /** clusters keep their budget in a local, so a suspended generator gets a fresh one when it resumes. */
+    /**
+     * Keeps its own copy of the block it started with: the blob outlives the call that created it, so reading the
+     * feature generator's field at resume time would use whichever variant the last chunk generation chose.
+     */
     private class ClusterGen extends BlobGen {
 
-        ClusterGen(World world, Random rand, BlockCoord start, int size) {
+        private final Block stone;
+
+        ClusterGen(World world, Random rand, BlockCoord start, int size, Block stone) {
             super(world, rand, start, size, false);
+            this.stone = stone;
         }
 
         @Override
@@ -131,7 +140,7 @@ public class WorldGenCluster implements IFeatureGenerator {
 
         @Override
         protected void place(BlockCoord c) {
-            placeOreVariant(c, WorldGenCluster.this.replaced, WorldGenCluster.this.block, WorldGenCluster.this.meta);
+            placeOreVariant(c, WorldGenCluster.this.replaced, this.stone, WorldGenCluster.this.meta);
         }
     }
 }

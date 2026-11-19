@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 
 import net.minecraft.block.Block;
 import net.minecraft.creativetab.CreativeTabs;
@@ -29,22 +30,32 @@ import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.NextTickListEntry;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraftforge.common.BiomeDictionary;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.FluidContainerRegistry;
+import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.oredict.OreDictionary;
 
 import com.mrfuzzihead.artifice.ArtificeBlocks;
 import com.mrfuzzihead.artifice.ArtificeConfig;
 import com.mrfuzzihead.artifice.ArtificeCore;
 import com.mrfuzzihead.artifice.ArtificeEnchants;
+import com.mrfuzzihead.artifice.ArtificeFluids;
 import com.mrfuzzihead.artifice.ArtificeItems;
 import com.mrfuzzihead.artifice.ArtificeRegistry;
 import com.mrfuzzihead.artifice.ArtificeTooltips;
 import com.mrfuzzihead.artifice.block.decorative.BlockLamp;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidBitumen;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidCreosote;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidFuel;
+import com.mrfuzzihead.artifice.block.fluid.BlockFluidOil;
 import com.mrfuzzihead.artifice.block.frame.BlockFrame;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameBlastWall;
 import com.mrfuzzihead.artifice.block.frame.BlockFrameDetector;
 import com.mrfuzzihead.artifice.block.world.BlockOre;
 import com.mrfuzzihead.artifice.block.world.BlockRock;
+import com.mrfuzzihead.artifice.compat.chisel.CarvingTable;
 import com.mrfuzzihead.artifice.event.ArtificeEventHandler;
 import com.mrfuzzihead.artifice.event.ArtificeTickHandler;
 import com.mrfuzzihead.artifice.event.Tracking;
@@ -68,11 +79,14 @@ import com.mrfuzzihead.artifice.world.ISuspendableGen;
 import com.mrfuzzihead.artifice.world.WorldGenCave;
 import com.mrfuzzihead.artifice.world.WorldGenCluster;
 import com.mrfuzzihead.artifice.world.WorldGenDesert;
+import com.mrfuzzihead.artifice.world.WorldGenFlowers;
 import com.mrfuzzihead.artifice.world.WorldGenLayer;
 import com.mrfuzzihead.artifice.world.WorldGenSulfur;
 
 import cofh.api.world.IFeatureGenerator;
+import cofh.core.util.oredict.OreDictionaryArbiter;
 import cpw.mods.fml.common.gameevent.PlayerEvent.ItemCraftedEvent;
+import cpw.mods.fml.common.registry.GameRegistry;
 
 /**
  * The in-game assertions. Each {@code check*} method reports every failure through {@link #check} so the exit code
@@ -87,7 +101,6 @@ public final class ServerGameTests {
 
     private static final String FAIL = "[ARTIFICE-GAMETEST] FAIL ";
     private static final String PASS = "[ARTIFICE-GAMETEST] ok   ";
-    private static final String KNOWN = "[ARTIFICE-GAMETEST] known ";
 
     private static int failures;
     private static int checks;
@@ -111,12 +124,15 @@ public final class ServerGameTests {
         run("rock metadata", ServerGameTests::checkRockMetadata);
         run("frame metadata", ServerGameTests::checkFrameMetadata);
         run("frozen registry names", ServerGameTests::checkFrozenRegistryNames);
+        run("chisel carving names", ServerGameTests::checkChiselCarvingNames);
         run("slab metadata", ServerGameTests::checkSlabMetadata);
         run("lamp lighting", ServerGameTests::checkLampLighting);
         run("lamp stability", ServerGameTests::checkLampStability);
         run("detector pulse", ServerGameTests::checkDetectorPulse);
         run("ore layer generation", ServerGameTests::checkLayerGeneration);
         run("worldgen fingerprints", ServerGameTests::checkWorldGenFingerprints);
+        run("flora worldgen clock", ServerGameTests::checkFloraIgnoresTheWorldClock);
+        run("worldgen variant isolation", ServerGameTests::checkWorldGenVariantIsolation);
         run("torch placement", ServerGameTests::checkTorchPlacement);
         run("scaffold support", ServerGameTests::checkScaffoldSupport);
         run("slab tooltips", ServerGameTests::checkSlabTooltips);
@@ -125,8 +141,10 @@ public final class ServerGameTests {
         run("resistance armour", ServerGameTests::checkResistanceArmourDamage);
         run("sickle", ServerGameTests::checkSickleAreaOfEffect);
         run("flora soil", ServerGameTests::checkFloraDropsWithoutSoil);
+        run("flora day/night", ServerGameTests::checkFloraDayNight);
         run("logic redstone", ServerGameTests::checkLogicRedstone);
         run("attuned redstone", ServerGameTests::checkAttunedRedstone);
+        run("attuned frequency index cost", ServerGameTests::checkFrequencyIndexCost);
         run("heating coil", ServerGameTests::checkHeatingCoil);
         run("nuclear battery", ServerGameTests::checkNuclearBattery);
         run("block drops", ServerGameTests::checkBlockDrops);
@@ -138,7 +156,11 @@ public final class ServerGameTests {
         run("tooltips", ServerGameTests::checkTooltips);
         run("config surface", ServerGameTests::checkConfigSurface);
         run("enchantments", ServerGameTests::checkEnchantments);
-        run("known bugs", ServerGameTests::checkKnownBugs);
+        run("fluid buckets", ServerGameTests::checkFluidBuckets);
+        run("ore variant gate", ServerGameTests::checkOreVariantGate);
+        // Last, deliberately: it posts a real WorldEvent.Unload for the live overworld, and other mods' handlers for
+        // that event are entitled to tear down their own state. Nothing is asserted after this group.
+        run("world unload event", ServerGameTests::checkWorldUnloadEvent);
 
         return failures;
     }
@@ -178,19 +200,6 @@ public final class ServerGameTests {
         check(
             what + " (expected " + expected + ", got " + actual + ")",
             expected == null ? actual == null : expected.equals(actual));
-    }
-
-    /**
-     * Records a bug that is known to be present. It is logged, not counted as a failure, so CI stays green until
-     * the fix lands - at which point the log line says so and the probe should be promoted to a real check.
-     */
-    private static void knownBug(String what, boolean stillBroken) {
-        checks++;
-        if (stillBroken) {
-            System.out.println(KNOWN + "still present: " + what);
-        } else {
-            System.out.println(KNOWN + "FIXED, promote to a real check: " + what);
-        }
     }
 
     private static World overworld() {
@@ -579,6 +588,48 @@ public final class ServerGameTests {
         checkEquals("the frozen registry name count", expected.size(), actual.size());
     }
 
+    /**
+     * Every name in {@link CarvingTable} must resolve to a registered block (CODE_REVIEW §9.9 / E.4).
+     *
+     * <p>
+     * This is the other half of {@code CarvingTableTest}: that test pins the strings, this one proves they are the
+     * strings the registry actually uses. The integration Chisel shipped failed on exactly this join - a name that
+     * looked right and resolved to null - and failed silently, so it is asserted here rather than trusted.
+     * </p>
+     */
+    private static void checkChiselCarvingNames() {
+        Set<Block> resolved = new HashSet<>();
+        List<String> unresolved = new ArrayList<>();
+
+        for (CarvingTable.Entry entry : CarvingTable.entries()) {
+            Block block = GameRegistry.findBlock(ArtificeCore.modID, entry.registryName);
+            if (block == null) {
+                unresolved.add(entry.qualifiedName());
+            } else {
+                resolved.add(block);
+            }
+        }
+
+        check("every chisel carving name resolves to a block " + unresolved, unresolved.isEmpty());
+
+        Set<Block> expected = new HashSet<>();
+        expected.add(ArtificeBlocks.blockBasalt);
+        expected.add(ArtificeBlocks.blockMarble);
+        expected.add(ArtificeBlocks.blockBasaltSlab);
+        expected.add(ArtificeBlocks.blockMarbleSlab);
+        for (int i = 0; i < ArtificeBlocks.rockColorNames.length; i++) {
+            expected.add(ArtificeBlocks.blockLimestones[i]);
+            expected.add(ArtificeBlocks.blockLimestoneSlabs[i]);
+        }
+
+        Set<Block> missing = new HashSet<>(expected);
+        missing.removeAll(resolved);
+        Set<Block> extra = new HashSet<>(resolved);
+        extra.removeAll(expected);
+        check("every rock and rock slab is in the carving table " + missing, missing.isEmpty());
+        check("the carving table names nothing else " + extra, extra.isEmpty());
+    }
+
     private static void checkFrameMetadata() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -942,6 +993,22 @@ public final class ServerGameTests {
                     ArtificeBlocks.blockScaffold.canBlockStay(world, bx + i, cy, bz));
             }
 
+            // CODE_REVIEW §9.11: a column can be built downwards. The block above now counts as the neighbour that
+            // opens the support search, so a scaffold hung under an anchored one stays, and drops with its anchor.
+            int dx = site.x + 16;
+            site.setBlock(dx + 1, cy - 1, cz, Blocks.stone, 0); // ground for the anchor
+            site.setBlock(dx + 1, cy, cz, ArtificeBlocks.blockScaffold, 0); // anchored
+            site.setBlock(dx, cy, cz, ArtificeBlocks.blockScaffold, 0); // beside it
+            site.setBlock(dx, cy - 1, cz, ArtificeBlocks.blockScaffold, 0); // its only neighbour is the one above
+            check(
+                "a scaffold under an anchored column stays",
+                ArtificeBlocks.blockScaffold.canBlockStay(world, dx, cy - 1, cz));
+
+            world.setBlockToAir(dx + 1, cy - 1, cz);
+            check(
+                "and drops once nothing in the column is anchored",
+                !ArtificeBlocks.blockScaffold.canBlockStay(world, dx, cy - 1, cz));
+
             // Remove the anchor's ground: now nothing within reach is anchored and the block must go.
             world.setBlockToAir(cx, cy - 1, cz + 1);
             check(
@@ -1236,6 +1303,43 @@ public final class ServerGameTests {
         }
     }
 
+    /**
+     * CODE_REVIEW §9.5. Open or closed is the block's own answer, taken from the light level in {@code updateTick} -
+     * which is why worldgen no longer reads the world clock to decide it. The clock read made generation depend on
+     * what time of day a chunk was populated, and it means nothing in a dimension whose time never moves.
+     */
+    private static void checkFloraDayNight() {
+        World world = overworld();
+        TestSite site = TestSite.create(world);
+
+        try {
+            int x = site.x;
+            int y = site.y;
+            int z = site.z;
+
+            // Dirt rather than water: BlockLotus#updateTick answers the light question and nothing else, and the
+            // placement rules are covered by the metadata test. Water would also flow out of the touched set.
+            site.setFloor(x, y - 1, z, Blocks.dirt);
+            site.setBlock(x, y, z, ArtificeBlocks.blockLotus, 0);
+            checkEquals("the lotus starts open", 0, world.getBlockMetadata(x, y, z));
+
+            // Roof it. No sky light and no block light, so the block's own tick closes it.
+            site.setBlock(x, y + 1, z, Blocks.stone, 0);
+            checkEquals("a roofed lotus has no light at all", 0, world.getBlockLightValue(x, y, z));
+            ArtificeBlocks.blockLotus.updateTick(world, x, y, z, world.rand);
+            checkEquals("the lotus closes in the dark", 1, world.getBlockMetadata(x, y, z));
+
+            // Light it with a glowstone: block light, so the result cannot depend on the time of day either.
+            site.setBlock(x, y + 1, z, Blocks.air, 0);
+            site.setBlock(x + 1, y, z, Blocks.glowstone, 0);
+            check("the lotus is lit", world.getBlockLightValue(x, y, z) >= 8);
+            ArtificeBlocks.blockLotus.updateTick(world, x, y, z, world.rand);
+            checkEquals("the lotus opens in the light", 0, world.getBlockMetadata(x, y, z));
+        } finally {
+            site.clear();
+        }
+    }
+
     private static void checkLogicRedstone() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1405,39 +1509,279 @@ public final class ServerGameTests {
      * without a reason, the refactor broke worldgen.
      * </p>
      */
+    /**
+     * CODE_REVIEW §10.3 item 3: a seed sweep, plus the property a single run cannot show - that a generator carries
+     * nothing from one run into the next.
+     *
+     * <p>
+     * Each generator is run three times over a freshly prepared band: the pinned seed (the fingerprint in the
+     * constant), a second seed, and the pinned seed again. The second seed must place something different, or the
+     * pinned hash is not evidence of anything; the third run must reproduce the first exactly, or the generator is
+     * holding state - which is exactly the risk §5.33 describes for the two generators that pick a limestone variant
+     * per biome by assigning a field.
+     * </p>
+     */
     private static void checkWorldGenFingerprints() {
         World world = overworld();
 
         // Uranium clusters replace stone anywhere in their band.
-        prepareBand(world, Blocks.stone, 64, 64);
-        checkEquals(
-            "uranium cluster fingerprint",
-            "486004ee60f51f2d",
-            runAndFingerprint(world, new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 8, 100), 11L, 64));
+        Runnable clusterBand = () -> prepareBand(world, Blocks.stone, 64, 64);
+        checkFingerprintAndIsolation(
+            world,
+            "uranium cluster",
+            clusterBand,
+            () -> new WorldGenCluster(ArtificeBlocks.blockUranium, 0, 10, 40, 8, 100),
+            11L,
+            21L,
+            64,
+            "486004ee60f51f2d");
 
-        // Sulfur only generates beside lava or beside sulfur it has already placed. It gets seeded sulfur rather than
-        // lava: lava is a fluid, and letting it into the band made this fingerprint vary between runs.
-        prepareBand(world, Blocks.stone, 127, 127);
-        seedSulfur(world);
-        checkEquals(
-            "sulfur deposit fingerprint",
-            "d13198cb0d98c1cf",
-            runAndFingerprint(world, new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 8, 100), 12L, 127));
+        // Sulfur only generates beside lava or beside sulfur it has already placed, and it probes a random y looking
+        // for that neighbour, so the band needs to be full of legal starting points: sulfur stripes rather than lava,
+        // because lava is a fluid and made this fingerprint vary between runs.
+        //
+        // The two 3x3 sulfur clusters this used to seed were not enough. The generator found a legal start so rarely
+        // that it placed nothing at all, so the old "sulfur deposit fingerprint" was the fingerprint of the bare band
+        // - which the vacuity check in checkFingerprintAndIsolation now catches.
+        Runnable sulfurBand = () -> {
+            prepareBand(world, Blocks.stone, 127, 127);
+            setStripes(world, 4, ArtificeBlocks.blockSulfur);
+        };
+        checkFingerprintAndIsolation(
+            world,
+            "sulfur deposit",
+            sulfurBand,
+            () -> new WorldGenSulfur(ArtificeBlocks.blockSulfur, 0, 8, 100),
+            22L,
+            32L,
+            127,
+            "b9590de415bd2ea1");
 
         // Niter replaces sand.
-        prepareBand(world, Blocks.sand, 127, 127);
-        checkEquals(
-            "niter deposit fingerprint",
-            "732f702e50257800",
-            runAndFingerprint(world, new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 8, 100), 13L, 127));
+        Runnable niterBand = () -> prepareBand(world, Blocks.sand, 127, 127);
+        checkFingerprintAndIsolation(
+            world,
+            "niter deposit",
+            niterBand,
+            () -> new WorldGenDesert(ArtificeBlocks.blockNiter, 0, 8, 100),
+            13L,
+            23L,
+            127,
+            "732f702e50257800");
 
         // Caves only generate next to something that is not opaque, so the band gets a void layer.
+        Runnable caveBand = () -> {
+            prepareBand(world, Blocks.stone, 40, 64);
+            setStripes(world, 4, Blocks.air);
+        };
+        checkFingerprintAndIsolation(
+            world,
+            "limestone cave",
+            caveBand,
+            () -> new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 8, 100),
+            14L,
+            24L,
+            64,
+            "795a4ed4e460244b");
+
+    }
+
+    /**
+     * CODE_REVIEW §9.5. Generated lotus metadata used to be read off the world clock, so the same chunk populated at
+     * 2000 and at 14000 produced different blocks, and a dimension whose time never moves got whichever state the
+     * clock happened to imply. The chunk is planted twice with the same seeds at two different times: the open lotus
+     * subtype (3) must be what lands both times, and never the closed one (4), which is what updateTick decides from
+     * the light level instead.
+     *
+     * <p>
+     * Two traps here, both of which the first version of this test walked into. The clock only ever decided the
+     * <em>lotus</em> subtype, so a band of bluebells passes while proving nothing - hence the "no closed lotuses"
+     * assertions rather than a bare fingerprint. And {@code WorldGenFlowers} only plants lotuses in a mountain biome
+     * (the plains band the other worldgen tests use can only ever get bluebells and irises), so this looks up a
+     * mountain chunk rather than reusing chunk 6000,6000.
+     * </p>
+     */
+    private static void checkFloraIgnoresTheWorldClock() {
+        World world = overworld();
+        int[] chunk = findChunkInBiome(world, BiomeDictionary.Type.MOUNTAIN);
+        check("there is a mountain chunk to plant lotuses in", chunk != null);
+        if (chunk == null) return;
+
+        long previous = world.getWorldTime();
+
+        try {
+            world.setWorldTime(2000L);
+            int[] day = plantLotuses(world, chunk[0], chunk[1]);
+
+            world.setWorldTime(14000L);
+            int[] night = plantLotuses(world, chunk[0], chunk[1]);
+
+            check("the lotus band is not empty (day " + day[0] + ", night " + night[0] + ")", day[0] > 0);
+            checkEquals("midday plants no closed lotuses", 0, day[1]);
+            checkEquals("midnight plants no closed lotuses either", 0, night[1]);
+            checkEquals("the same seeds plant the same lotuses", day[0], night[0]);
+        } finally {
+            world.setWorldTime(previous);
+        }
+    }
+
+    /**
+     * Flattens one chunk to a grass floor, plants over it, and returns {@code [open, closed]} lotus counts. One roll
+     * picks a single flora type for all of its placements and bails out thirty percent of the time, so a handful of
+     * rolls would not be sure to include a lotus.
+     */
+    private static int[] plantLotuses(World world, int chunkX, int chunkZ) {
+        int x0 = chunkX << 4;
+        int z0 = chunkZ << 4;
+
+        // The generator plants at getHeightValue(), so the terrain has to be flat and low. Flag 2: no neighbour
+        // notifications and no light updates for a quarter of a million filler blocks.
+        for (int x = x0; x < x0 + 16; x++) {
+            for (int z = z0; z < z0 + 16; z++) {
+                for (int y = 0; y < 256; y++) {
+                    world.setBlock(x, y, z, y < 64 ? Blocks.grass : Blocks.air, 0, 2);
+                }
+            }
+        }
+
+        clearPendingGenerators(world);
+        WorldGenFlowers flowers = new WorldGenFlowers();
+        for (int i = 0; i < 24; i++) {
+            flowers.generateFeature(new Random(100L + i), chunkX, chunkZ, world, true);
+        }
+        clearPendingGenerators(world);
+
+        int open = 0;
+        int closed = 0;
+        for (int x = x0; x < x0 + 16; x++) {
+            for (int z = z0; z < z0 + 16; z++) {
+                for (int y = 0; y < 256; y++) {
+                    if (world.getBlock(x, y, z) != ArtificeBlocks.blockFlora) continue;
+                    int meta = world.getBlockMetadata(x, y, z);
+                    if (meta == 3) {
+                        open++;
+                    } else if (meta == 4) {
+                        closed++;
+                    }
+                }
+            }
+        }
+
+        return new int[] { open, closed };
+    }
+
+    /** Biome lookup needs no chunk load, so this can search a wide ring cheaply. */
+    private static int[] findChunkInBiome(World world, BiomeDictionary.Type type) {
+        for (int radius = 0; radius <= 96; radius++) {
+            for (int cx = -radius; cx <= radius; cx++) {
+                for (int cz = -radius; cz <= radius; cz++) {
+                    if (Math.max(Math.abs(cx), Math.abs(cz)) != radius) continue;
+                    if (BiomeDictionary.isBiomeOfType(world.getBiomeGenForCoords((cx << 4) + 8, (cz << 4) + 8), type)) {
+                        return new int[] { cx, cz };
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Pins a generator's fingerprint, then checks that the hash depends on the seed and that repeating the pinned
+     * seed afterwards reproduces it. Each run gets a fresh generator and a freshly filled band, so the only thing
+     * carried over is whatever the generator class itself holds.
+     */
+    private static void checkFingerprintAndIsolation(World world, String label, Runnable prepare,
+        Supplier<IFeatureGenerator> factory, long pinnedSeed, long otherSeed, int bandTop, String pinned) {
+        // Before anything runs: a fingerprint that matches the untouched band is a test of the test. The sulfur
+        // generator sat in exactly that state - its band had no legal starting point, so it never placed a block and
+        // the pinned hash described the filler.
+        prepare.run();
+        String bare = fingerprintOfBand(world, bandTop);
+        check(label + " places something at all", !pinned.equals(bare));
+
+        prepare.run();
+        checkEquals(label + " fingerprint", pinned, runAndFingerprint(world, factory.get(), pinnedSeed, bandTop));
+
+        prepare.run();
+        String other = runAndFingerprint(world, factory.get(), otherSeed, bandTop);
+        check(label + " places something different for a different seed", !pinned.equals(other));
+
+        prepare.run();
+        checkEquals(
+            label + " repeats its fingerprint after another run",
+            pinned,
+            runAndFingerprint(world, factory.get(), pinnedSeed, bandTop));
+    }
+
+    /**
+     * CODE_REVIEW 5.33: the limestone variant is chosen per blob, not stored on the feature generator.
+     *
+     * <p>
+     * Both generators picked the variant for a biome by assigning {@code this.block}, and the blob they hand to the
+     * tick handler reads that field when it is <em>resumed</em> - which is a chunk boundary away. So a blob could be
+     * finished with the variant of whichever chunk generated in between, single-threaded as well as not. The variant
+     * is a local passed to the blob now.
+     * </p>
+     *
+     * <p>
+     * The field is {@code protected}, so the probes below read it: after a run that places blocks, the generator's own
+     * block must still be the one it was constructed with. The precondition is asserted too - a run that places
+     * nothing would pass this test while proving nothing, which is exactly how the sulfur fingerprint stayed vacuous.
+     * </p>
+     */
+    private static void checkWorldGenVariantIsolation() {
+        World world = overworld();
+
+        // Two different limestone blocks as the constructed value. The biome picks one variant for a given blob, so
+        // at most one of the two can happen to equal it: one of the assertions below is always non-vacuous, whatever
+        // biome the test world has at this chunk.
+        Block[] constructed = { ArtificeBlocks.blockLimestones[0], ArtificeBlocks.blockLimestones[5] };
+
+        prepareBand(world, Blocks.stone, 64, 64);
+        for (Block block : constructed) {
+            ProbeCluster cluster = new ProbeCluster(block, 0, 10, 40, 8, 100);
+            check(
+                "the cluster probe places something",
+                cluster.generateFeature(new Random(11L), GEN_CHUNK_X, GEN_CHUNK_Z, world, true));
+            check("a cluster does not retarget its own feature generator", cluster.ownBlock() == block);
+        }
+
         prepareBand(world, Blocks.stone, 40, 64);
         setStripes(world, 4, Blocks.air);
-        checkEquals(
-            "limestone cave fingerprint",
-            "795a4ed4e460244b",
-            runAndFingerprint(world, new WorldGenCave(ArtificeBlocks.rockBlocks[0], 0, 10, 40, 8, 100), 14L, 64));
+        for (Block block : constructed) {
+            ProbeCave cave = new ProbeCave(block, 0, 10, 40, 8, 100);
+            check(
+                "the cave probe places something",
+                cave.generateFeature(new Random(14L), GEN_CHUNK_X, GEN_CHUNK_Z, world, true));
+            check("a cave does not retarget its own feature generator", cave.ownBlock() == block);
+        }
+
+        // The blobs are queued for the tick handler; they belong to this test, not to whatever runs next.
+        clearPendingGenerators(world);
+    }
+
+    /** Reads the {@code protected} block field of the feature generator, which is what 5.33 is about. */
+    private static final class ProbeCluster extends WorldGenCluster {
+
+        private ProbeCluster(Block block, int meta, int minHeight, int maxHeight, int size, int frequency) {
+            super(block, meta, minHeight, maxHeight, size, frequency);
+        }
+
+        private Block ownBlock() {
+            return this.block;
+        }
+    }
+
+    private static final class ProbeCave extends WorldGenCave {
+
+        private ProbeCave(Block block, int meta, int minHeight, int maxHeight, int size, int frequency) {
+            super(block, meta, minHeight, maxHeight, size, frequency);
+        }
+
+        private Block ownBlock() {
+            return this.block;
+        }
     }
 
     /** Fills a controlled band: everything up to {@code fillTop} is {@code fill}, above it is air. */
@@ -1481,28 +1825,6 @@ public final class ServerGameTests {
      * the band gets stripes instead: half of it is a valid candidate.
      * </p>
      */
-    /** A few sulfur blocks at fixed positions, so the generator has somewhere legal to grow from. */
-    private static void seedSulfur(World world) {
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                world.setBlock(
-                    (GEN_CHUNK_X << 4) + 8 + dx,
-                    60,
-                    (GEN_CHUNK_Z << 4) + 8 + dz,
-                    ArtificeBlocks.blockSulfur,
-                    0,
-                    2);
-                world.setBlock(
-                    (GEN_CHUNK_X << 4) + 8 + dx,
-                    20,
-                    (GEN_CHUNK_Z << 4) + 8 + dz,
-                    ArtificeBlocks.blockSulfur,
-                    0,
-                    2);
-            }
-        }
-    }
-
     private static void clearPendingGenerators(World world) {
         ArrayDeque<ISuspendableGen> queue = ArtificeTickHandler.suspendedGenerators.get(world.provider.dimensionId);
         if (queue != null) {
@@ -1653,6 +1975,70 @@ public final class ServerGameTests {
         }
     }
 
+    /**
+     * CODE_REVIEW §10.3 item 2: the property that motivated the index, asserted rather than assumed.
+     *
+     * <p>
+     * The old query walked every loaded tile entity of every world, so N transmitters cost N full scans per tick. The
+     * replacement files tiles by frequency, and the claim worth pinning is the one a correctness test cannot see: a
+     * query's cost follows the size of <em>its own</em> frequency, not the number of attuned tiles in the world.
+     * {@link Tracking#visitsOfLastQuery()} counts what a query actually walked.
+     * </p>
+     */
+    private static void checkFrequencyIndexCost() {
+        World world = overworld();
+        TestSite site = TestSite.create(world, 512, 560);
+
+        try {
+            String[] frequencies = { "cost-a", "cost-b", "cost-c" };
+            int perFrequency = 6;
+
+            // Interleaved on purpose: if the index were one list the queries would still find their tiles, but the
+            // visits would follow the whole list rather than the frequency.
+            int placed = 0;
+            boolean allPlaced = true;
+            for (int i = 0; i < perFrequency; i++) {
+                for (String frequency : frequencies) {
+                    int x = site.x + placed;
+                    site.setBlock(x, site.y, site.z, ArtificeBlocks.blockAttunedRedstoneReceiver, 0);
+                    TileEntity tile = world.getTileEntity(x, site.y, site.z);
+                    if (tile instanceof TileEntityAttuned) {
+                        ((TileEntityAttuned) tile).setFrequency(frequency);
+                    } else {
+                        allPlaced = false;
+                    }
+                    placed++;
+                }
+            }
+            check("every cost-site tile has an attuned tile entity", allPlaced);
+            checkEquals("the cost site holds three frequencies", placed, frequencies.length * perFrequency);
+
+            int visited = 0;
+            for (String frequency : frequencies) {
+                Tracking.getHighestFrequencyPower(frequency);
+                checkEquals(
+                    "a query for " + frequency + " walks only its own " + perFrequency + " tiles",
+                    perFrequency,
+                    Tracking.visitsOfLastQuery());
+                visited += Tracking.visitsOfLastQuery();
+            }
+            checkEquals("three queries walk each tile exactly once", placed, visited);
+
+            // An unused frequency costs nothing, and the answer is still the live maximum.
+            checkEquals("an unused frequency visits nothing", 0, Tracking.getHighestFrequencyPower("cost-unused"));
+            checkEquals("an unused frequency has no cost", 0, Tracking.visitsOfLastQuery());
+
+            TileEntity first = world.getTileEntity(site.x, site.y, site.z);
+            if (first instanceof TileEntityAttuned) {
+                ((TileEntityAttuned) first).power = 7;
+                checkEquals("the query still reads live power", 7, Tracking.getHighestFrequencyPower("cost-a"));
+                checkEquals("and still costs only its own frequency", perFrequency, Tracking.visitsOfLastQuery());
+            }
+        } finally {
+            site.clear();
+        }
+    }
+
     private static void checkHeatingCoil() {
         World world = overworld();
         TestSite site = TestSite.create(world);
@@ -1793,6 +2179,33 @@ public final class ServerGameTests {
                 4242,
                 stack.getTagCompound()
                     .getInteger("charge"));
+
+            // CODE_REVIEW 5.27: the craft buys the capacity, not a tank of RF. The recipe used to stamp full
+            // capacity on its output *and* onBlockPlacedBy filled any untagged stack, so every crafted battery
+            // arrived full - one craft was the whole point of the machine, for free.
+            if (ArtificeConfig.nuclearBatteryRecipe) {
+                ItemStack crafted = recipeOutput(Item.getItemFromBlock(ArtificeBlocks.blockNuclearBattery));
+                check("the battery has a recipe", crafted != null);
+                if (crafted != null) {
+                    check("the crafted battery ships empty", crafted.getTagCompound() == null);
+                }
+            }
+
+            battery.setEnergy(5000);
+            ArtificeBlocks.blockNuclearBattery.onBlockPlacedBy(
+                world,
+                site.x,
+                site.y,
+                site.z,
+                null,
+                new ItemStack(ArtificeBlocks.blockNuclearBattery));
+            checkEquals(
+                "an untagged stack does not change what the battery holds",
+                5000,
+                battery.getEnergyStored(ForgeDirection.UP));
+
+            ArtificeBlocks.blockNuclearBattery.onBlockPlacedBy(world, site.x, site.y, site.z, null, stack);
+            checkEquals("a tagged stack transfers its charge", 4242, battery.getEnergyStored(ForgeDirection.UP));
         } finally {
             site.clear();
         }
@@ -1836,6 +2249,24 @@ public final class ServerGameTests {
             ArtificeItems.itemResource,
             ArtificeBlocks.blockEnderOre.getItemDropped(0, world.rand, 0));
         checkEquals("ender ore drops ender dust metadata", 2, ArtificeBlocks.blockEnderOre.damageDropped(0));
+
+        // CODE_REVIEW 5.32 called damageDropped redundant because the block has no subtypes. It is not: Forge's
+        // Block#getDrops builds each stack as (getItemDropped(meta), damageDropped(meta)), so removing it would make
+        // ender ore drop sulfur dust - itemResource meta 0. Both variants go through the real Forge path here.
+        for (Block ender : new Block[] { ArtificeBlocks.blockEnderOre, ArtificeBlocks.blockEnderOreGlowing }) {
+            String name = Block.blockRegistry.getNameForObject(ender);
+            List<ItemStack> drops = ender.getDrops(world, 0, 0, 0, 0, 0);
+
+            // The count is random, so the assertions are over the whole list: a varying number of checks would make
+            // the suite's own total vary between runs.
+            boolean allEnderDust = !drops.isEmpty();
+            for (ItemStack drop : drops) {
+                allEnderDust &= drop != null && drop.getItem() == ArtificeItems.itemResource
+                    && drop.getItemDamage() == 2;
+            }
+            check(name + " drops ender dust through Forge's getDrops", allEnderDust);
+            check(name + " drops two to four items", drops.size() >= 2 && drops.size() <= 4);
+        }
 
         // CODE_REVIEW §8 lists BlockRock.isReplaceableOreGen as unreferenced; it is a live vanilla hook -
         // WorldGenMinable.generate asks the block it is about to replace - so this pins the contract instead.
@@ -2150,6 +2581,15 @@ public final class ServerGameTests {
         check("upgrades have a recipe", hasRecipeOutput(recipes, ArtificeItems.itemUpgrade));
     }
 
+    private static ItemStack recipeOutput(Item item) {
+        for (IRecipe recipe : CraftingManager.getInstance()
+            .getRecipeList()) {
+            ItemStack output = recipe.getRecipeOutput();
+            if (output != null && output.getItem() == item) return output;
+        }
+        return null;
+    }
+
     private static boolean hasRecipeOutput(List<IRecipe> recipes, Item item) {
         for (IRecipe recipe : recipes) {
             ItemStack output = recipe.getRecipeOutput();
@@ -2417,11 +2857,193 @@ public final class ServerGameTests {
     // Known bugs, probed in game
     // ---------------------------------------------------------------------------------------------------------
 
-    private static void checkKnownBugs() {
-        // MiscUtils.shuffleArray is followed by sides[sides[i]], so the neighbour helpers visit a permutation of a
-        // permutation: some sides twice, some never. Fix first, then delete this probe and promote the heating-coil
-        // "every furnace" assertion to a real check.
-        knownBug("MiscUtils.getHeatReceiverNeighbor/provideEnergyToNeighbors double-index the side array", true);
+    // ---------------------------------------------------------------------------------------------------------
+    // World unload
+    // ---------------------------------------------------------------------------------------------------------
+
+    /**
+     * CODE_REVIEW §10.3 item 4, the half that was still mocked: {@code Tracking.forget} was unit-tested with a mock
+     * world, but nothing asserted that the mod is actually subscribed to {@code WorldEvent.Unload}.
+     *
+     * <p>
+     * This posts the real event on the real bus with the real {@link net.minecraft.world.WorldServer}. The index is
+     * checked through {@link Tracking#visitsOfLastQuery()}, because an emptied frequency and a frequency holding one
+     * stale tile both answer {@code 0}: only the visit count says which happened.
+     * </p>
+     *
+     * <p>
+     * Runs last and reports, rather than fails, if another mod's unload handler throws - that would be their bug, and
+     * it must not be reported as ours.
+     * </p>
+     */
+    /**
+     * CODE_REVIEW 9.7. A fluid we adopted from another mod keeps that mod's bucket: {@code FluidContainerRegistry} has
+     * no precedence, it returns the first matching container, so two registrations for one fluid make the answer a
+     * matter of mod load order. The rule is "we register a bucket iff we created the fluid", which is one claim in a
+     * pack with BuildCraft and a different claim without it - so this asserts the rule, not a fixed answer.
+     */
+    private static void checkFluidBuckets() {
+        checkFluidBucket(
+            "oil",
+            ArtificeFluids.fluidOil,
+            ArtificeBlocks.blockOil,
+            BlockFluidOil.class,
+            ArtificeItems.bucketOil,
+            0);
+        checkFluidBucket(
+            "fuel",
+            ArtificeFluids.fluidFuel,
+            ArtificeBlocks.blockFuel,
+            BlockFluidFuel.class,
+            ArtificeItems.bucketFuel,
+            1);
+        checkFluidBucket(
+            "creosote",
+            ArtificeFluids.fluidCreosote,
+            ArtificeBlocks.blockCreosote,
+            BlockFluidCreosote.class,
+            ArtificeItems.bucketCreosote,
+            2);
+        checkFluidBucket(
+            "bitumen",
+            ArtificeFluids.fluidBitumen,
+            ArtificeBlocks.blockBitumen,
+            BlockFluidBitumen.class,
+            ArtificeItems.bucketBitumen,
+            3);
+    }
+
+    /**
+     * @param ourBlockClass the fluid block Artifice would have built for this fluid
+     * @see #checkFluidBuckets
+     */
+    private static void checkFluidBucket(String name, Fluid fluid, Block block, Class<?> ourBlockClass,
+        ItemStack bucket, int meta) {
+        check("the " + name + " fluid is registered", fluid != null);
+        if (fluid == null) return;
+
+        // The independent signal: ArtificeBlocks builds a block of its own class only when the fluid arrived without
+        // one, so our class here means we made the fluid. Asking ArtificeFluids.owns() for the expectation would make
+        // this test agree with any answer it is given - the first version did exactly that and passed against a build
+        // where every fluid was treated as adopted.
+        boolean weMadeIt = block != null && block.getClass() == ourBlockClass;
+        boolean isContainer = FluidContainerRegistry.getFluidForFilledItem(bucket) != null;
+
+        checkEquals(name + ": our bucket exists exactly when we created the fluid", weMadeIt, isContainer);
+        checkEquals(name + ": the creative tab offers it on the same rule", weMadeIt, tabHasBucket(meta));
+        checkEquals(name + ": owns() agrees with the block Artifice built", weMadeIt, ArtificeFluids.owns(fluid));
+
+        // Whatever the answer, the metadata has to stay a registered subtype. It is what a bucket already in a save
+        // points at, and CoFH's ItemBase.getRenderPasses dereferences it without a null check.
+        check(
+            name + ": metadata " + meta + " is still a registered subtype",
+            !"item.invalid".equals(bucket.getUnlocalizedName()));
+
+        if (weMadeIt) {
+            ItemStack filled = FluidContainerRegistry.fillFluidContainer(
+                new FluidStack(fluid, FluidContainerRegistry.BUCKET_VOLUME),
+                FluidContainerRegistry.EMPTY_BUCKET);
+            check(
+                name + ": our bucket fills from our fluid",
+                filled != null && filled.getItem() == bucket.getItem() && filled.getItemDamage() == meta);
+        }
+    }
+
+    private static boolean tabHasBucket(int meta) {
+        for (Object entry : ArtificeItems.itemBucket.itemList) {
+            if (entry instanceof Integer && (Integer) entry == meta) return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * CODE_REVIEW 9.1. The gate decides whether another mod's ore block may be rewritten into the Artifice variant for
+     * the rock a blob is generating in. A foreign block registered under one of our ore names is the case: with the
+     * gate open it is eligible, with it closed only vanilla and our own blocks are.
+     *
+     * <p>
+     * Last but one on purpose: it registers an ore that nothing else expected, and takes the global {@code oreSet}
+     * down both branches, so every earlier test runs against the shipped configuration.
+     * </p>
+     */
+    private static void checkOreVariantGate() {
+        ItemStack foreignStack = new ItemStack(Blocks.gold_block);
+        OreDictionary.registerOre("oreCopper", foreignStack);
+        // CoFH caches the dictionary per name and is fed by this call, not by OreDictionary.registerOre.
+        OreDictionaryArbiter.registerOreDictionaryEntry(foreignStack, "oreCopper");
+
+        NameMetaPair foreign = new NameMetaPair(foreignStack.getItem(), foreignStack.getItemDamage());
+        boolean previous = ArtificeConfig.convertOtherModOres;
+
+        try {
+            ArtificeConfig.convertOtherModOres = true;
+            ArtificeBlocks.initOreSet();
+            check("a foreign ore is convertible while the gate is open", ArtificeBlocks.oreSet.contains(foreign));
+
+            ArtificeConfig.convertOtherModOres = false;
+            ArtificeBlocks.initOreSet();
+            check("it is not once the gate is closed", !ArtificeBlocks.oreSet.contains(foreign));
+            check(
+                "vanilla ores still convert with the gate closed",
+                ArtificeBlocks.oreSet.contains(new NameMetaPair(Item.getItemFromBlock(Blocks.iron_ore), 0)));
+            check(
+                "our own ores still convert with the gate closed",
+                ArtificeBlocks.oreSet.contains(new NameMetaPair(ArtificeBlocks.blockOres[0], 0)));
+        } finally {
+            ArtificeConfig.convertOtherModOres = previous;
+            ArtificeBlocks.initOreSet();
+        }
+    }
+
+    private static void checkWorldUnloadEvent() {
+        World world = overworld();
+        TestSite site = TestSite.create(world, 512, 616);
+
+        try {
+            site.setBlock(site.x, site.y, site.z, ArtificeBlocks.blockAttunedRedstoneReceiver, 0);
+            site.setBlock(site.x + 2, site.y, site.z, ArtificeBlocks.blockAttunedRedstoneReceiver, 0);
+
+            TileEntity first = world.getTileEntity(site.x, site.y, site.z);
+            TileEntity second = world.getTileEntity(site.x + 2, site.y, site.z);
+            check(
+                "both unload-site tiles exist",
+                first instanceof TileEntityAttuned && second instanceof TileEntityAttuned);
+            if (!(first instanceof TileEntityAttuned) || !(second instanceof TileEntityAttuned)) {
+                return;
+            }
+
+            TileEntityAttuned receiver = (TileEntityAttuned) first;
+            ((TileEntityAttuned) second).setFrequency("unload-b");
+            receiver.setFrequency("unload-a");
+            receiver.power = 9;
+
+            checkEquals(
+                "the tile answers with its power before the unload",
+                9,
+                Tracking.getHighestFrequencyPower("unload-a"));
+            checkEquals("and the query walks exactly its frequency", 1, Tracking.visitsOfLastQuery());
+
+            try {
+                net.minecraftforge.common.MinecraftForge.EVENT_BUS
+                    .post(new net.minecraftforge.event.world.WorldEvent.Unload(world));
+            } catch (Throwable t) {
+                System.out.println(
+                    "[ARTIFICE-GAMETEST] note: another mod's WorldEvent.Unload handler threw " + t
+                        + " - not counted as an Artifice failure");
+            }
+
+            // Not invalidated: the block is still there. If the entries are gone anyway, forget() did it, which is
+            // the mechanism under test.
+            check("the unload does not invalidate the tile", !receiver.isInvalid());
+            Tracking.getHighestFrequencyPower("unload-a");
+            checkEquals("a world unload empties the frequency index", 0, Tracking.visitsOfLastQuery());
+            checkEquals("and the query answers zero", 0, Tracking.getHighestFrequencyPower("unload-a"));
+            Tracking.getHighestFrequencyPower("unload-b");
+            checkEquals("every frequency of that world is emptied", 0, Tracking.visitsOfLastQuery());
+        } finally {
+            site.clear();
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------

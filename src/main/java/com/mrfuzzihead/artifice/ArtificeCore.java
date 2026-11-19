@@ -7,11 +7,14 @@ import net.minecraft.item.Item;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.common.MinecraftForge;
 
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.mrfuzzihead.artifice.compat.AE2;
+import com.mrfuzzihead.artifice.compat.AngelicaWhitelist;
 import com.mrfuzzihead.artifice.compat.Buildcraft;
 import com.mrfuzzihead.artifice.compat.CarpentersBlocks;
+import com.mrfuzzihead.artifice.compat.ChiselCompat;
 import com.mrfuzzihead.artifice.compat.FMP;
 import com.mrfuzzihead.artifice.compat.Forestry;
 import com.mrfuzzihead.artifice.compat.ICompat;
@@ -30,8 +33,10 @@ import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.Mod.Instance;
 import cpw.mods.fml.common.SidedProxy;
+import cpw.mods.fml.common.event.FMLConstructionEvent;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLInterModComms.IMCEvent;
+import cpw.mods.fml.common.event.FMLLoadCompleteEvent;
 import cpw.mods.fml.common.event.FMLMissingMappingsEvent;
 import cpw.mods.fml.common.event.FMLMissingMappingsEvent.MissingMapping;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
@@ -70,6 +75,39 @@ public class ArtificeCore {
     @EventHandler
     public void serverStarting(FMLServerStartingEvent evt) {}
 
+    /**
+     * Runs while mods are still being constructed, so this is the last point at which another mod's config file can be
+     * corrected before any {@code preInit} reads it. Angelica's render-pass whitelist carries a class name from before
+     * the package rename and has no API, so the file is the only place to fix it (CODE_REVIEW E.5).
+     */
+    @EventHandler
+    public void construction(FMLConstructionEvent evt) {
+        AngelicaWhitelist.patch(
+            Loader.instance()
+                .getConfigDir())
+            .log(modLog());
+    }
+
+    /**
+     * Catch-all for the first launch of a fresh instance: Angelica may create its config during startup, after the
+     * construction pass above has already looked for it. Whatever this finds takes effect on the next launch.
+     */
+    @EventHandler
+    public void loadComplete(FMLLoadCompleteEvent evt) {
+        AngelicaWhitelist.patch(
+            Loader.instance()
+                .getConfigDir())
+            .log(modLog());
+    }
+
+    /**
+     * The mod log does not exist until {@code preInit}, but the Angelica patch runs before that; fall back to a logger
+     * under the same name so the early lines still land in the game log.
+     */
+    public static Logger modLog() {
+        return logger != null ? logger : LogManager.getLogger(modID);
+    }
+
     @EventHandler
     public void preInit(FMLPreInitializationEvent evt) {
         this.compats.add(new Buildcraft());
@@ -78,6 +116,7 @@ public class ArtificeCore {
         this.compats.add(new CarpentersBlocks());
         this.compats.add(new MFR());
         this.compats.add(new AE2());
+        this.compats.add(new ChiselCompat());
         this.compats.add(new Vanilla());
         logger = evt.getModLog();
         MinecraftForge.EVENT_BUS.register(eventHandler = new ArtificeEventHandler());

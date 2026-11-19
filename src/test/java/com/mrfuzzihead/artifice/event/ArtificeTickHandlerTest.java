@@ -10,7 +10,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import com.mrfuzzihead.artifice.util.ChunkCoord;
-import com.mrfuzzihead.artifice.world.IDelayedGen;
 import com.mrfuzzihead.artifice.world.ISuspendableGen;
 
 /**
@@ -54,22 +53,6 @@ public class ArtificeTickHandlerTest {
             this.generated.add(chunk);
             this.chunks.remove(chunk);
             return this.generated.size() < this.chunksBeforeDone;
-        }
-    }
-
-    private static final class FakeDelayedGen implements IDelayedGen {
-
-        private int runs;
-
-        @Override
-        public ChunkCoord getChunk() {
-            return new ChunkCoord(0, 0);
-        }
-
-        @Override
-        public boolean doGeneration() {
-            this.runs++;
-            return true;
         }
     }
 
@@ -145,24 +128,5 @@ public class ArtificeTickHandlerTest {
     public void anEmptyQueueIsANoOp() {
         Assert.assertFalse(ArtificeTickHandler.tickSuspendableGenerators(new ArrayDeque<ISuspendableGen>()));
         Assert.assertFalse(ArtificeTickHandler.tickSuspendableGenerators(null));
-        Assert.assertFalse(ArtificeTickHandler.tickDelayedGenerators(new ArrayDeque<IDelayedGen>()));
-        Assert.assertFalse(ArtificeTickHandler.tickDelayedGenerators(null));
-    }
-
-    @Test
-    public void delayedGeneratorsRunOnePerSweepAndAreRemoved() {
-        ArrayDeque<IDelayedGen> queue = new ArrayDeque<>();
-        FakeDelayedGen first = new FakeDelayedGen();
-        FakeDelayedGen second = new FakeDelayedGen();
-        queue.add(first);
-        queue.add(second);
-
-        Assert.assertTrue(ArtificeTickHandler.tickDelayedGenerators(queue));
-        Assert.assertEquals(1, first.runs);
-        Assert.assertEquals("one delayed generator per sweep", 0, second.runs);
-
-        Assert.assertTrue(ArtificeTickHandler.tickDelayedGenerators(queue));
-        Assert.assertEquals(1, second.runs);
-        Assert.assertTrue(queue.isEmpty());
     }
 }
