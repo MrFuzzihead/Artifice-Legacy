@@ -6,7 +6,7 @@
 | **Reviewed commit** | `616bb9e` (Initial decompilation build: namespace refactor, spotless, cofhCore dep) |
 | **Scope** | 145 Java files / ~17,600 lines, 1.7.10 Forge, GTNH RetroFuturaGradle buildchain, CoFHCore required |
 | **Companion PRs** | #2 `feature/test-harness` — JUnit/Mockito/JaCoCo + in-game game-test mod. #3 `docs/code-review` — this document. Both merged into `main` at `762f04e`. |
-| **Follow-up branch** | `refactor/1.1.6` — the release branch for the work below, including the downstream audit in **Appendix E** |
+| **Follow-up branch** | `feature-refactors` (PR #9), successor to the earlier `refactor/1.1.6` branch — every "fixed on `refactor/1.1.6`" status below is in it, together with the downstream audit in **Appendix E** |
 
 ---
 
@@ -47,6 +47,7 @@
 | 31 | 226 tooltip registrations and five copies of the tooltip lookup (§7.5) | refactor | ~~P3~~ done |
 | 32 | Scaffold support scanned a 33³ cube and ran a flood fill per candidate (§6.3) | perf | ~~P3~~ done |
 | 33 | Four ~100-line worldgen blob generators with two drifted differences (§7.1) | refactor | ~~P3~~ done |
+| 34 | The version has two sources that cannot agree: `@Mod` quotes the constant, `mcmod.info` quotes the gradle token (§9.13) | decision | **P3, open** |
 
 Severity key: **P0** = data loss or blocks a planned change, **P1** = crashes / lost functionality / unbounded growth, **P2** = wrong behaviour, **P3** = cleanup.
 
@@ -1524,24 +1525,48 @@ Verified end to end by dropping a real `angelica-modules.cfg` (CRLF) naming `Blo
 `shukaro.nodalmechanics` into `run/server/config` and running the in-game suite: two references moved, the other mod's
 package untouched, every other byte identical, `1803/1803` checks green.
 
+### 9.13 The version string has two sources — **open (decision)**
+
+`@Mod(version = ...)` reads `ArtificeCore.modVersion`, a Java literal. `mcmod.info` reads the gradle token
+`${modVersion}`, which the GTNH convention plugin fills with the git describe string: a tag on a release build, a
+`<sha>-<branch>+<sha>` describe otherwise. So one jar reports `1.7.10R1.1.4` to FML and, in the build made for this
+branch, `6ed8082-feature-refactors+6ed8082f6e-dirty` to anything that reads `mcmod.info`.
+
+Both are wrong, in different ways:
+
+* The literal is stale. Upstream's last release was 1.1.5R, so the fork reports a *lower* version than the mod it
+  replaces - visible in the FML log and to any pack tooling that compares versions.
+* The token is a different string on every commit, and on a release build a different *format* from the literal
+  (`1.1.6` versus `1.7.10R1.1.6`).
+
+Note what is **not** at stake: in FML 1.7.10 the `requiredMods`, `dependencies` and `useDependencyInformation` fields of
+`mcmod.info` are parsed into `ModMetadata` and read by nothing - `javap` over the 1.7.10 Forge jar shows `ModMetadata`
+as the only class that references them. Dependency ordering comes from the `@Mod` annotation alone, so filling those
+fields in is documentation, not load behaviour.
+
+The reference implementation in this org (Peripherals++) has a single source: `Reference.VERSION = Tags.VERSION`, the
+same token `mcmod.info` uses, so the two cannot disagree. Doing the same here is a two-line change - `modVersion =
+Tags.VERSION`, and drop the `1.7.10R` prefix assertion in `RegistrationInvariantsTest` - but it changes what FML reports
+for every build, dev builds included, which is why it is a decision rather than a cleanup.
+
+Until then: bump the literal on release (`1.7.10R1.1.6`), and expect the mod list to show the tag instead.
+
 ## 10. Test strategy and coverage analysis
 
 ### 10.1 What is covered now
 
-* **Unit (172 tests, 22 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
+* **Unit (177 tests, 23 classes, headless):** pure value types and algorithms — `BlockCoord`, `ChunkCoord`, `NameMetaPair`,
   `MiscUtils`, `MinecraftColors`, `FormatCodes`, `RomanUtil`, `EnumUpgrades`,
   `TileEntityLogic`, `ArrayUtils`, `PendingChunks`, `GenFrequency`, the whole common config
   surface (`ArtificeConfig.readCommon` against a default and a hostile `Configuration`), the tick-handler queue
   sweep, the creative-tab side annotations, the lamp and frame-detector state helpers, the attuned frequency index, the
-  registry-name builders, the scaffold support predicate against a transcription of the algorithm it replaced, the
-  metadata-table invariants, the Chisel carving table (names, groups, metadata forms and order, asserted as literals
-  rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip, CRLF and non-ASCII preservation,
-  idempotence, absent file), the icon-table subscript clamp (`clampIndex` over -8..23 and both `Integer` extremes),
-  the scaffold support predicate against a transcription of the algorithm it replaced (with §9.11's sixth direction
-  as the one recorded difference), the metadata-table invariants, the Chisel carving table (names, groups, metadata
-  forms and order, asserted as literals rather than rebuilt), the Angelica whitelist rewrite (byte-for-byte round trip,
-  CRLF and non-ASCII preservation, idempotence, absent file), the icon-table subscript clamp (`clampIndex` over
-  -8..23 and both `Integer` extremes), and the `@Mod`/`@Instance` agreement.
+  registry-name builders, the scaffold support predicate against a transcription of the algorithm it replaced (with
+  §9.11's sixth direction as the one recorded difference), the metadata-table invariants, the Chisel carving table
+  (names, groups, metadata forms and order, asserted as literals rather than rebuilt), the Angelica whitelist rewrite
+  (byte-for-byte round trip, CRLF and non-ASCII preservation, idempotence, absent file), the icon-table subscript
+  clamp (`clampIndex` over -8..23 and both `Integer` extremes), the `@Mod`/`@Instance` agreement, and the metadata
+  pin (the `mcmod.info` gradle tokens, a description that is not the template's, and a required-mod list that matches
+  the annotation's `required-after` set without promoting any `after:` integration to a requirement - §9.13).
 * **In-game (1,847 assertions):** registry completeness and namespacing, item-block presence, ore-dictionary
   membership and drop fallbacks, metadata round-trips for every rock/tier/slab/lamp/torch/flora subtype, scaffold
   anchoring, sickle area of effect, the logic block truth table and connection mapping, the attuned frequency link,

@@ -37,10 +37,10 @@ public class RegistrationInvariantsTest {
         // @Instance value that FML uses for instance injection.
         Assert.assertEquals(mod.modid(), ArtificeCore.modID);
         Assert.assertEquals(mod.name(), ArtificeCore.modName);
-        // The annotation reads the constant now, so this cannot drift - but the constant is also what mcmod.info and
-        // the update-check URL quote, so pin the value itself as well.
-        // The version is also what mcmod.info and the update check quote, so pin its shape as well as its identity:
-        // "1.7.10R<mod version>" is what the pack expects to see.
+        // The annotation reads the constant now, so this cannot drift - but the constant is what FML reports and what
+        // a pack compares, so pin its value and its shape: "1.7.10R<mod version>" is what the pack expects to see.
+        // Note that mcmod.info does *not* quote this constant: it quotes the gradle token ${modVersion}, which is the
+        // git tag (or a describe string in a dev build). The two are independent, which is CODE_REVIEW 9.13.
         Assert.assertEquals(mod.version(), ArtificeCore.modVersion);
         Assert.assertTrue(
             "mod version should read 1.7.10R<version>, got " + ArtificeCore.modVersion,
